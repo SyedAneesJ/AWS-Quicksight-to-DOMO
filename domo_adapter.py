@@ -122,6 +122,7 @@ class DomoAdapter:
 
         return self.client.create_card(page_id, payload)
 
+
     def _build_kpi_payload(self, visual):
         dataset_id = self.dataset_resolver.resolve(visual["datasetRef"])
         m = visual["measures"][0]
@@ -278,45 +279,15 @@ class DomoAdapter:
         }
     
     def _build_line_payload(self, visual: dict):
-        """Build Domo card definition for LINE visual with proper date grain handling"""
         dataset_id = self.dataset_resolver.resolve(visual["datasetRef"])
 
-        # --- EXTRACT X AXIS (with time grain) ---
+        # -------- X AXIS --------
         x_entry = visual["x"][0]
-        
-        if isinstance(x_entry, dict):
-            # Format: {"column": "attendance_date", "timeGrain": "MONTH"}
-            x_col = x_entry.get("column")
-            time_grain = x_entry.get("timeGrain", "DAY")
-        else:
-            # Format: "attendance_date"
-            x_col = x_entry
-            time_grain = "DAY"
-        
-        # Map the column name
-        x_col = self._map_column(x_col)
-        
-        # --- EXTRACT MEASURE ---
-        m = visual["measures"][0]
-        val_col = self._map_column(m["column"])
-        aggregation = self._normalize_aggregation(m.get("aggregation", "SUM"))
+        x_col = self._map_column(x_entry["column"])
+        time_grain = x_entry.get("timeGrain", "DAY")
 
-        # --- GET AXIS TITLES ---
-        x_title = visual.get("axes", {}).get("x", {}).get(
-            "title", x_col.replace("_", " ").title()
-        )
-        y_title = visual.get("axes", {}).get("y", {}).get(
-            "title", f"{aggregation} of {val_col}".replace("_", " ").title()
-        )
+        domo_grain = self._map_time_grain_to_domo(time_grain)
 
-        # --- DETERMINE IF THIS IS A DATE FIELD ---
-        is_date_field = self._is_date_column(x_col)
-        
-        # --- MAP TIME GRAIN TO DOMO ---
-        domo_grain = self._map_time_grain_to_domo(time_grain) if time_grain else "DAY"
-        
-        # --- BUILD CALENDAR COLUMN NAME ---
-        # Domo uses CalendarDay, CalendarWeek, CalendarMonth, CalendarYear, etc.
         calendar_column_map = {
             "DAY": "CalendarDay",
             "WEEK": "CalendarWeek",
@@ -324,21 +295,36 @@ class DomoAdapter:
             "QUARTER": "CalendarQuarter",
             "YEAR": "CalendarYear"
         }
-        calendar_column = calendar_column_map.get(domo_grain, "CalendarDay")
 
-        print(f"  📅 Line chart date grain: {time_grain} -> Domo: {domo_grain} -> Calendar: {calendar_column}")
+        calendar_column = calendar_column_map.get(time_grain, "CalendarDay")
 
-        # --- BUILD BIG_NUMBER SUBSCRIPTION (for summary value) ---
+        # -------- MEASURE --------
+        m = visual["measures"][0]
+        val_col = self._map_column(m["column"])
+        aggregation = self._normalize_aggregation(m.get("aggregation", "SUM"))
+
+        # -------- AXIS TITLES --------
+        x_title = visual.get("axes", {}).get("x", {}).get("title", "Date")
+        y_title = visual.get("axes", {}).get("y", {}).get(
+            "title", f"{aggregation} of {val_col}"
+        )
+
+        print(
+            f"📈 LINE date grain: {time_grain} -> "
+            f"Domo: {domo_grain} -> Calendar: {calendar_column}"
+        )
+
+        # -------- BIG NUMBER --------
         big_number_subscription = {
             "name": "big_number",
             "columns": [
                 {
+                    "column": val_col,
                     "aggregation": aggregation,
                     "alias": f"{aggregation} of {val_col}",
-                    "column": val_col,
                     "format": {
-                        "format": "#A",
-                        "type": "abbreviated"
+                        "type": "abbreviated",
+                        "format": "#A"
                     }
                 }
             ],
@@ -351,70 +337,44 @@ class DomoAdapter:
             "limit": 1
         }
 
-        # --- BUILD MAIN SUBSCRIPTION ---
-        main_columns = [
-            {
-                "column": calendar_column,  # ✅ CalendarMonth, CalendarDay, etc.
-                "calendar": True,
-                "mapping": "ITEM"
-            },
-            {
-                "column": val_col,
-                "aggregation": aggregation,
-                "mapping": "VALUE"
-            }
-        ]
-
+        # -------- MAIN SUBSCRIPTION --------
         main_subscription = {
             "name": "main",
-            "columns": main_columns,
+            "dataSourceId": dataset_id,
+            "columns": [
+                {
+                    "column": calendar_column,
+                    "calendar": True,
+                    "mapping": "ITEM"
+                },
+                {
+                    "column": val_col,
+                    "aggregation": aggregation,
+                    "mapping": "VALUE"
+                }
+            ],
             "filters": [],
             "orderBy": [],
             "groupBy": [
                 {
-                    "column": calendar_column,  # ✅ Group by CalendarMonth
+                    "column": calendar_column,
                     "calendar": True
                 }
             ],
+            "dateGrain": {
+                "column": x_col,              # actual date column
+                "dateTimeElement": domo_grain
+            },
             "fiscal": False,
             "projection": False,
             "distinct": False
         }
 
-        # --- ADD DATE GRAIN (references the actual date column) ---
-        if is_date_field:
-            main_subscription["dateGrain"] = {
-                "column": x_col,  # ✅ The actual date column: "attendance_date"
-                "dateTimeElement": domo_grain  # ✅ MONTH
-            }
-
-        # --- BUILD COMPLETE PAYLOAD ---
         return {
             "definition": {
                 "subscriptions": {
                     "big_number": big_number_subscription,
                     "main": main_subscription
-                },
-                "formulas": {
-                    "dsUpdated": [],
-                    "dsDeleted": [],
-                    "card": []
-                },
-                "annotations": {
-                    "new": [],
-                    "modified": [],
-                    "deleted": []
-                },
-                "conditionalFormats": {
-                    "card": [],
-                    "datasource": []
-                },
-                "controls": [],
-                "segments": {
-                    "active": [],
-                    "create": [],
-                    "update": [],
-                    "delete": []
                 },
                 "charts": {
                     "main": {
@@ -429,16 +389,18 @@ class DomoAdapter:
                 },
                 "dynamicTitle": {
                     "text": [
-                        {
-                            "text": visual["title"],
-                            "type": "TEXT"
-                        }
+                        {"type": "TEXT", "text": visual["title"]}
                     ]
                 },
                 "dynamicDescription": {
                     "text": [],
                     "displayOnCardDetails": True
                 },
+                "formulas": {"card": [], "dsUpdated": [], "dsDeleted": []},
+                "annotations": {"new": [], "modified": [], "deleted": []},
+                "conditionalFormats": {"card": [], "datasource": []},
+                "controls": [],
+                "segments": {"active": [], "create": [], "update": [], "delete": []},
                 "chartVersion": "12",
                 "inputTable": False,
                 "title": visual["title"],
@@ -551,43 +513,41 @@ class DomoAdapter:
         }
 
     def _build_stacked_area_payload(self, visual: dict):
-        """✅ FIXED: Removed calendar flag, only using dateGrain"""
         dataset_id = self.dataset_resolver.resolve(visual["datasetRef"])
 
-        # Extract x-axis with time grain
         x_entry = visual["x"][0]
-        x_col, time_grain = self._extract_time_grain(x_entry)
-        x_col = self._map_column(x_col)
-        
-        # Map stack column
+        x_col = self._map_column(x_entry["column"])
+        time_grain = x_entry.get("timeGrain", "DAY")
+
+        domo_grain = self._map_time_grain_to_domo(time_grain)
+
+        calendar_column_map = {
+            "DAY": "CalendarDay",
+            "WEEK": "CalendarWeek",
+            "MONTH": "CalendarMonth",
+            "QUARTER": "CalendarQuarter",
+            "YEAR": "CalendarYear"
+        }
+
+        calendar_column = calendar_column_map.get(time_grain, "CalendarDay")
+
+        measure = visual["measures"][0]
+        value_col = self._map_column(measure["column"])
+        aggregation = self._normalize_aggregation(measure["aggregation"])
+
         stack_col = self._map_column(visual["stack"][0])
 
-        # Map measure
-        m = visual["measures"][0]
-        val_col = self._map_column(m["column"])
-        aggregation = self._normalize_aggregation(m.get("aggregation", "AVERAGE"))
-
-        # Get axis titles
-        x_title = visual.get("axes", {}).get("x", {}).get(
-            "title", x_col.replace("_", " ").title()
-        )
-        y_title = visual.get("axes", {}).get("y", {}).get(
-            "title", f"{aggregation} of {val_col}".replace("_", " ").title()
-        )
-
-        # Check if x_col is a date field
-        is_date_field = self._is_date_column(x_col)
-        
-        # Build main subscription - NO calendar flag in columns!
         main_subscription = {
             "name": "main",
+            "dataSourceId": dataset_id,
             "columns": [
                 {
-                    "column": x_col,
+                    "column": calendar_column,
+                    "calendar": True,
                     "mapping": "ITEM"
                 },
                 {
-                    "column": val_col,
+                    "column": value_col,
                     "aggregation": aggregation,
                     "mapping": "VALUE"
                 },
@@ -596,53 +556,65 @@ class DomoAdapter:
                     "mapping": "SERIES"
                 }
             ],
-            "groupBy": [
-                {"column": x_col},
-                {"column": stack_col}
-            ],
             "filters": [],
             "orderBy": [],
+            "groupBy": [
+                {
+                    "column": calendar_column,
+                    "calendar": True
+                },
+                {
+                    "column": stack_col
+                }
+            ],
+            "dateGrain": {
+                "column": x_col,
+                "dateTimeElement": domo_grain
+            },
             "fiscal": False,
             "projection": False,
             "distinct": False
         }
 
-        # ✅ ADD DATE GRAIN - dateGrain goes in subscription, not column
-        if is_date_field:
-            domo_grain = self._map_time_grain_to_domo(time_grain)
-            main_subscription["dateGrain"] = {
-                "column": x_col,
-                "dateTimeElement": domo_grain
-            }
-
-        return {
+        payload = {
             "definition": {
                 "subscriptions": {
                     "main": main_subscription
                 },
-                "formulas": {"dsUpdated": [], "dsDeleted": [], "card": []},
-                "annotations": {"new": [], "modified": [], "deleted": []},
-                "conditionalFormats": {"card": [], "datasource": []},
-                "controls": [],
-                "segments": {"active": [], "create": [], "update": [], "delete": []},
                 "charts": {
                     "main": {
                         "component": "main",
                         "chartType": "badge_stackedtrend",
                         "overrides": {
-                            "title_x": x_title,
-                            "title_y": y_title
+                            "title_x": visual.get("axes", {}).get("x", {}).get("title", ""),
+                            "title_y": visual.get("axes", {}).get("y", {}).get("title", "")
                         },
                         "goal": None
                     }
                 },
                 "dynamicTitle": {
-                    "text": [{"text": visual["title"], "type": "TEXT"}]
+                    "text": [
+                        {
+                            "type": "TEXT",
+                            "text": visual.get(
+                                "title",
+                                f"{aggregation} of {value_col} by {x_col} and {stack_col}"
+                            )
+                        }
+                    ]
                 },
-                "dynamicDescription": {"text": [], "displayOnCardDetails": True},
+                "dynamicDescription": {
+                    "text": [],
+                    "displayOnCardDetails": True
+                },
+                "formulas": {"card": [], "dsUpdated": [], "dsDeleted": []},
+                "annotations": {"new": [], "modified": [], "deleted": []},
+                "conditionalFormats": {"card": [], "datasource": []},
+                "controls": [],
+                "segments": {"active": [], "create": [], "update": [], "delete": []},
                 "chartVersion": "12",
                 "inputTable": False,
-                "title": visual["title"],
+                "title": visual.get("title", ""),
                 "description": "",
                 "includeEmptyFilters": True
             },
@@ -651,6 +623,9 @@ class DomoAdapter:
             },
             "variables": True
         }
+
+        return payload
+
 
     def _build_pie_payload(self, visual: dict):
         dataset_id = self.dataset_resolver.resolve(visual["datasetRef"])
@@ -898,204 +873,141 @@ class DomoAdapter:
         }
 
     def _build_combo_payload(self, visual: dict):
-        """✅ FIXED: Line+Bar combo matching Domo's expected structure"""
+        """✅ FINAL: Working combo chart with big_number subscription"""
         dataset_id = self.dataset_resolver.resolve(visual["datasetRef"])
-        
-        # Extract x-axis with time grain
+
+        # Extract x-axis
         x_entry = visual["x"][0]
         x_col, time_grain = self._extract_time_grain(x_entry)
         x_col_mapped = self._map_column(x_col)
         
-        # Handle series
-        series_list = visual.get("series", [])
-        series_col_mapped = None
-        if series_list and len(series_list) > 0:
-            series_col_mapped = self._map_column(series_list[0])
-        
+        is_date_field = self._is_date_column(x_col_mapped)
+        domo_grain = self._map_time_grain_to_domo(time_grain) if time_grain else "DAY"
+
         bar_measures = visual.get("barMeasures", [])
         line_measures = visual.get("lineMeasures", [])
+        series_list = visual.get("series", [])
+
+        if not bar_measures or not line_measures:
+            raise ValueError("COMBO requires at least one BAR and one LINE measure")
+
+        # Resolve columns
+        bar_col = self._map_column(bar_measures[0]["column"])
+        bar_agg = self._normalize_aggregation(bar_measures[0]["aggregation"])
+
+        line_col = self._map_column(line_measures[0]["column"])
+        line_agg = self._normalize_aggregation(line_measures[0]["aggregation"])
+
+        series_col = self._map_column(series_list[0]) if series_list else None
+
+        # Build subscription columns
+        subscription_columns = []
+        group_by = []
+
+        # X-axis
+        subscription_columns.append({
+            "column": x_col_mapped,
+            "mapping": "ITEM"
+        })
+        group_by.append({
+            "column": x_col_mapped
+        })
+
+        # Add both measures (bar first, then line)
+        subscription_columns.append({
+            "column": bar_col,
+            "aggregation": bar_agg,
+            "mapping": "VALUE"
+        })
         
-        is_date_field = self._is_date_column(x_col_mapped)
-        
-        # Map time grain to Domo format
-        domo_grain = self._map_time_grain_to_domo(time_grain) if time_grain else "DAY"
-        
-        # Build columns array with metadata
-        columns = []
-        aliases = []
-        formats = []
-        mappings = []
-        metadata = []
-        
-        # ✅ X-axis column (ITEM mapping)
-        if is_date_field:
-            columns.append("Date")
-            aliases.append(x_col_mapped)
-            formats.append(None)
-            mappings.append("ITEM")
-            metadata.append({
-                "type": "DATE",
-                "dataSourceId": dataset_id,
-                "maxLength": -1,
-                "minLength": -1,
-                "periodIndex": 0,
-                "aggregated": False,
-                "label": x_col_mapped,
-                "column": "Date",
-                "filterType": "CALENDAR",
-                "dateJoinColumn": x_col_mapped,
-                "fiscal": False,
-                "calendarColumn": True
+        subscription_columns.append({
+            "column": line_col,
+            "aggregation": line_agg,
+            "mapping": "VALUE"
+        })
+
+        # Series column (optional)
+        if series_col:
+            subscription_columns.append({
+                "column": series_col,
+                "mapping": "SERIES"
             })
-        else:
-            columns.append(x_col_mapped)
-            aliases.append(x_col_mapped)
-            formats.append(None)
-            mappings.append("ITEM")
-            metadata.append({
-                "type": "STRING",
-                "dataSourceId": dataset_id,
-                "maxLength": -1,
-                "minLength": -1,
-                "periodIndex": 0,
-                "aggregated": False,
-                "label": x_col_mapped,
-                "column": x_col_mapped,
-                "filterType": "COLUMN_ID",
-                "calendarColumn": False
+            group_by.append({
+                "column": series_col
             })
-        
-        # ✅ Add measure columns (VALUE mappings)
-        all_measures = []
-        
-        if bar_measures:
-            for bar_measure in bar_measures:
-                all_measures.append(bar_measure)
-        
-        if line_measures:
-            for line_measure in line_measures:
-                all_measures.append(line_measure)
-        
-        # Add first measure (bar or line)
-        if all_measures:
-            first_measure = all_measures[0]
-            measure_col = self._map_column(first_measure["column"])
-            measure_agg = self._normalize_aggregation(first_measure["aggregation"])
-            
-            columns.append(measure_col)
-            aliases.append(measure_col)
-            formats.append(None)
-            mappings.append("VALUE")
-            metadata.append({
-                "type": "LONG",
-                "dataSourceId": dataset_id,
-                "maxLength": -1,
-                "minLength": -1,
-                "periodIndex": 0,
-                "aggregated": True,
-                "label": measure_col,
-                "column": measure_col,
-                "filterType": "COLUMN_ID",
-                "aggregation": measure_agg,
-                "calendarColumn": False
-            })
-        
-        # ✅ Series column (if exists)
-        if series_col_mapped:
-            columns.append(series_col_mapped)
-            aliases.append(series_col_mapped)
-            formats.append(None)
-            mappings.append("SERIES")
-            metadata.append({
-                "type": "STRING",
-                "dataSourceId": dataset_id,
-                "maxLength": -1,
-                "minLength": -1,
-                "periodIndex": 0,
-                "aggregated": False,
-                "label": series_col_mapped,
-                "column": series_col_mapped,
-                "filterType": "COLUMN_ID",
-                "calendarColumn": False
-            })
-        
-        # Build main subscription with proper structure
+
+        # Build main subscription
         main_subscription = {
             "name": "main",
             "dataSourceId": dataset_id,
-            "columns": [],  # Will be built from column mappings
+            "columns": subscription_columns,
             "filters": [],
             "orderBy": [],
-            "groupBy": [],
+            "groupBy": group_by,
             "fiscal": False,
             "projection": False,
             "distinct": False
         }
-        
-        # Add dateGrain if date field
+
+        # Add dateGrain for date fields
         if is_date_field:
             main_subscription["dateGrain"] = {
                 "column": x_col_mapped,
                 "dateTimeElement": domo_grain
             }
-        
-        # Build column definitions for subscription
-        subscription_columns = []
-        
-        # X-axis
-        if is_date_field:
-            subscription_columns.append({
-                "column": "Date",
-                "calendar": True,
-                "mapping": "ITEM"
-            })
-            main_subscription["groupBy"].append({
-                "column": "Date",
-                "calendar": True
-            })
-        else:
-            subscription_columns.append({
-                "column": x_col_mapped,
-                "mapping": "ITEM"
-            })
-            main_subscription["groupBy"].append({
-                "column": x_col_mapped
-            })
-        
-        # Measures
-        if all_measures:
-            for measure in all_measures:
-                measure_col = self._map_column(measure["column"])
-                measure_agg = self._normalize_aggregation(measure["aggregation"])
-                subscription_columns.append({
-                    "column": measure_col,
-                    "aggregation": measure_agg,
-                    "mapping": "VALUE"
-                })
-        
-        # Series
-        if series_col_mapped:
-            subscription_columns.append({
-                "column": series_col_mapped,
-                "mapping": "SERIES"
-            })
-            main_subscription["groupBy"].append({
-                "column": series_col_mapped
-            })
-        
-        main_subscription["columns"] = subscription_columns
-        
-        # ✅ Return payload matching Domo's structure
-        return {
+
+        # ✅ Build big_number subscription (REQUIRED for combo charts)
+        big_number_subscription = {
+            "name": "big_number",
+            "dataSourceId": dataset_id,
+            "columns": [
+                {
+                    "column": bar_col,
+                    "aggregation": bar_agg,
+                    "alias": f"{bar_agg} of {bar_col}",
+                    "format": {
+                        "type": "abbreviated",
+                        "format": "#A"
+                    }
+                }
+            ],
+            "filters": [],
+            "orderBy": [],
+            "groupBy": [],
+            "fiscal": False,
+            "projection": False,
+            "distinct": False,
+            "limit": 1
+        }
+
+        payload = {
             "definition": {
                 "subscriptions": {
+                    "big_number": big_number_subscription,  # ✅ Add big_number FIRST
                     "main": main_subscription
                 },
-                "formulas": {"dsUpdated": [], "dsDeleted": [], "card": []},
-                "annotations": {"new": [], "modified": [], "deleted": []},
-                "conditionalFormats": {"card": [], "datasource": []},
-                "controls": [],
-                "segments": {"active": [], "create": [], "update": [], "delete": []},
+                "formulas": {
+                    "dsUpdated": [],
+                    "dsDeleted": [],
+                    "card": []
+                },
+                "conditionalFormats": {
+                    "card": [],
+                    "datasource": []
+                },
+                "annotations": {
+                    "new": [],
+                    "modified": [],
+                    "deleted": []
+                },
+                "dynamicTitle": {
+                    "text": [{"text": visual.get("title", "Combo Chart"), "type": "TEXT"}]
+                },
+                "dynamicDescription": {
+                    "text": [],
+                    "displayOnCardDetails": True
+                },
+                "chartVersion": "12",
                 "charts": {
                     "main": {
                         "component": "main",
@@ -1104,16 +1016,24 @@ class DomoAdapter:
                         "goal": None
                     }
                 },
-                "dynamicTitle": {
-                    "text": [{"text": visual.get("title", "Combo Chart"), "type": "TEXT"}]
+                "allowTableDrill": True,
+                "segments": {
+                    "active": [],
+                    "definitions": []
                 },
-                "dynamicDescription": {"text": [], "displayOnCardDetails": True},
-                "chartVersion": "12",
-                "inputTable": False,
-                "title": visual.get("title", "Combo Chart"),
-                "description": "",
-                "includeEmptyFilters": True
+                "controls": [],  # ✅ Add controls array
+                "inputTable": False
             },
-            "dataProvider": {"dataSourceId": dataset_id},
+            "dataProvider": {
+                "dataSourceId": dataset_id
+            },
             "variables": True
         }
+        
+        # DEBUG: Print the payload
+        import json
+        print("\n🔍 COMBO PAYLOAD:")
+        print(json.dumps(payload, indent=2))
+        print("\n")
+        
+        return payload
