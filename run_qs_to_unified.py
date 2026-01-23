@@ -485,10 +485,24 @@ def transform_qs_dashboard_to_unified(qs_dashboard: Dict[str, Any]) -> Dict[str,
                     else list(dataset_id_map.keys())[0]
                 )
 
+                # --- Extract KPI title exactly as in QuickSight ---
+                raw_aggregation = val.get("AggregationFunction", "SUM")
+                aggregation = normalize_aggregation(raw_aggregation)
+
+                kpi_title = (
+                    kpi.get("ChartConfiguration", {})
+                    .get("Title", {})
+                    .get("FormatText", {})
+                    .get("PlainText")
+                )
+
+                if not kpi_title:
+                    kpi_title = f"{aggregation.replace('_', ' ').title()} of {column_name}"
+
                 visuals.append({
                     "id": kpi["VisualId"],
                     "type": "KPI",
-                    "title": sheet["Name"] + " KPI",
+                    "title": kpi_title,
                     "datasetRef": dataset_id_map[dataset_identifier],
                     "measures": [
                         {
@@ -497,6 +511,8 @@ def transform_qs_dashboard_to_unified(qs_dashboard: Dict[str, Any]) -> Dict[str,
                         }
                     ]
                 })
+
+
 
            # ================= LINE / AREA =================
             elif "LineChartVisual" in visual:

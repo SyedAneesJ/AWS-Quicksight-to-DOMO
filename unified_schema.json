@@ -21,14 +21,12 @@
         {
           "id": "e49d1c30-1172-44e5-9794-f47a4c87cef4_d749e87c-842f-4c6f-a99e-327f10ac5079",
           "type": "KPI",
-          "title": "Sheet 1 KPI",
+          "title": "Average of hours_worked",
           "datasetRef": "dataset_1",
           "measures": [
             {
               "column": "hours_worked",
-              "aggregation": {
-                "SimpleNumericalAggregation": "AVERAGE"
-              }
+              "aggregation": "AVERAGE"
             }
           ]
         },
