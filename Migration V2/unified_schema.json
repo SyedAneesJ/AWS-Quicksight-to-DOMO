@@ -1,0 +1,55 @@
+{
+    "schemaVersion": "1.1",
+    "source": {
+      "tool": "AWS QuickSight",
+      "dashboardId": "7e06829f-064a-4bbc-918a-d5c287edf0bc",
+      "dashboardName": "MyDashboard"
+    },
+    "datasets": [
+      {
+        "id": "dataset_1",
+        "name": "employee_attendance_data",
+        "sourceArn": "arn:aws:quicksight:ap-south-1:553737138720:dataset/eb3c31a7-d2e3-4a98-9e03-87d3164d284a"
+      }
+    ],
+    "calculatedFields": [],
+    "pages": [
+      {
+        "id": "7e06829f-064a-4bbc-918a-d5c287edf0bc_e460ef13-9b26-4f53-a9b2-5f48bbe6d50b",
+        "name": "Sheet 1",
+        "visuals": [
+          {
+            "id": "7e06829f-064a-4bbc-918a-d5c287edf0bc_f3074941-e051-4416-a2b0-79739bec47c7",
+            "type": "KPI",
+            "title": "Sheet 1 KPI",
+            "datasetRef": "dataset_1",
+            "measures": [
+              {
+                "column": "working_hours",
+                "aggregation": {
+                  "SimpleNumericalAggregation": "AVERAGE"
+                }
+              }
+            ]
+          },
+          {
+            "id": "7e06829f-064a-4bbc-918a-d5c287edf0bc_7ade7734-e9db-4825-a980-f4148c5351fe",
+            "type": "BAR",
+            "title": "Sheet 1",
+            "datasetRef": "dataset_1",
+            "x": [
+              "date"
+            ],
+            "measures": [
+              {
+                "column": "working_hours",
+                "aggregation": {
+                  "SimpleNumericalAggregation": "AVERAGE"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }

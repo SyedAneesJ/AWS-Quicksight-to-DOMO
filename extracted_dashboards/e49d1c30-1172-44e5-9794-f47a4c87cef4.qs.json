@@ -1,0 +1,1157 @@
+{
+  "ResponseMetadata": {
+    "RequestId": "1f865ecc-4354-494e-bba6-11f7eee2c679",
+    "HTTPStatusCode": 200,
+    "HTTPHeaders": {
+      "date": "Thu, 22 Jan 2026 08:13:00 GMT",
+      "content-type": "application/json",
+      "content-length": "37882",
+      "connection": "keep-alive",
+      "x-amzn-requestid": "1f865ecc-4354-494e-bba6-11f7eee2c679",
+      "strict-transport-security": "max-age=31536000; includeSubdomains; preload"
+    },
+    "RetryAttempts": 0
+  },
+  "Status": 200,
+  "DashboardId": "e49d1c30-1172-44e5-9794-f47a4c87cef4",
+  "Name": "Dashboard-Migration V1",
+  "ResourceStatus": "CREATION_SUCCESSFUL",
+  "Definition": {
+    "DataSetIdentifierDeclarations": [
+      {
+        "Identifier": "employee_department_attendance_quicksight_safe.csv",
+        "DataSetArn": "arn:aws:quicksight:ap-south-1:553737138720:dataset/f9545b95-4241-48e9-83ab-48c45da98f14"
+      }
+    ],
+    "Sheets": [
+      {
+        "SheetId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_4a33912a-3517-4ee0-8bd3-ae6ef834f3d3",
+        "Name": "Sheet 1",
+        "Visuals": [
+          {
+            "KPIVisual": {
+              "VisualId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_d749e87c-842f-4c6f-a99e-327f10ac5079",
+              "Title": {
+                "Visibility": "VISIBLE"
+              },
+              "Subtitle": {
+                "Visibility": "VISIBLE"
+              },
+              "ChartConfiguration": {
+                "FieldWells": {
+                  "Values": [
+                    {
+                      "NumericalMeasureField": {
+                        "FieldId": "employee_-hours_wor-7939af.1.1769059990100",
+                        "Column": {
+                          "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                          "ColumnName": "hours_worked"
+                        },
+                        "AggregationFunction": {
+                          "SimpleNumericalAggregation": "AVERAGE"
+                        }
+                      }
+                    }
+                  ],
+                  "TargetValues": [
+                    {
+                      "NumericalMeasureField": {
+                        "FieldId": "employee_-hours_wor-7939af.1.1769059983644",
+                        "Column": {
+                          "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                          "ColumnName": "hours_worked"
+                        },
+                        "AggregationFunction": {
+                          "SimpleNumericalAggregation": "AVERAGE"
+                        }
+                      }
+                    }
+                  ],
+                  "TrendGroups": []
+                },
+                "SortConfiguration": {},
+                "KPIOptions": {
+                  "Comparison": {
+                    "ComparisonMethod": "PERCENT_DIFFERENCE"
+                  },
+                  "PrimaryValueDisplayType": "ACTUAL",
+                  "SecondaryValueFontConfiguration": {
+                    "FontSize": {
+                      "Relative": "EXTRA_LARGE"
+                    }
+                  },
+                  "Sparkline": {
+                    "Visibility": "VISIBLE",
+                    "Type": "AREA"
+                  },
+                  "VisualLayoutOptions": {
+                    "StandardLayout": {
+                      "Type": "VERTICAL"
+                    }
+                  }
+                }
+              },
+              "ConditionalFormatting": {
+                "ConditionalFormattingOptions": [
+                  {
+                    "ComparisonValue": {
+                      "TextColor": {
+                        "Solid": {
+                          "Expression": "(AVG({hours_worked})/nullIf(AVG({hours_worked}),0))-1 > 0.0",
+                          "Color": "#2CAD00"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "ComparisonValue": {
+                      "TextColor": {
+                        "Solid": {
+                          "Expression": "(AVG({hours_worked})/nullIf(AVG({hours_worked}),0))-1 < 0.0",
+                          "Color": "#DE3B00"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "ComparisonValue": {
+                      "Icon": {
+                        "CustomCondition": {
+                          "Expression": "(AVG({hours_worked})/nullIf(AVG({hours_worked}),0))-1 > 0.0",
+                          "IconOptions": {
+                            "Icon": "CARET_UP"
+                          },
+                          "Color": "#2CAD00"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "ComparisonValue": {
+                      "Icon": {
+                        "CustomCondition": {
+                          "Expression": "(AVG({hours_worked})/nullIf(AVG({hours_worked}),0))-1 < 0.0",
+                          "IconOptions": {
+                            "Icon": "CARET_DOWN"
+                          },
+                          "Color": "#DE3B00"
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              "Actions": [],
+              "ColumnHierarchies": []
+            }
+          },
+          {
+            "BarChartVisual": {
+              "VisualId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_8fcc6762-0f4c-4150-b5e6-b6d83ee3aefe",
+              "Title": {
+                "Visibility": "VISIBLE"
+              },
+              "Subtitle": {
+                "Visibility": "VISIBLE"
+              },
+              "ChartConfiguration": {
+                "FieldWells": {
+                  "BarChartAggregatedFieldWells": {
+                    "Category": [
+                      {
+                        "CategoricalDimensionField": {
+                          "FieldId": "employee_-departmen-2e3d6e.0.1769058819191",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "department"
+                          }
+                        }
+                      }
+                    ],
+                    "Values": [
+                      {
+                        "NumericalMeasureField": {
+                          "FieldId": "employee_-hours_wor-7939af.1.1769058822976",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "hours_worked"
+                          },
+                          "AggregationFunction": {
+                            "SimpleNumericalAggregation": "AVERAGE"
+                          }
+                        }
+                      }
+                    ],
+                    "Colors": []
+                  }
+                },
+                "SortConfiguration": {
+                  "CategorySort": [
+                    {
+                      "FieldSort": {
+                        "FieldId": "employee_-hours_wor-7939af.1.1769058822976",
+                        "Direction": "DESC"
+                      }
+                    }
+                  ],
+                  "CategoryItemsLimit": {
+                    "OtherCategories": "INCLUDE"
+                  },
+                  "ColorItemsLimit": {
+                    "OtherCategories": "INCLUDE"
+                  },
+                  "SmallMultiplesLimitConfiguration": {
+                    "OtherCategories": "INCLUDE"
+                  }
+                },
+                "Orientation": "VERTICAL",
+                "BarsArrangement": "CLUSTERED",
+                "DataLabels": {
+                  "Visibility": "HIDDEN",
+                  "Overlap": "DISABLE_OVERLAP"
+                },
+                "Tooltip": {
+                  "TooltipVisibility": "VISIBLE",
+                  "SelectedTooltipType": "DETAILED",
+                  "FieldBasedTooltip": {
+                    "AggregationVisibility": "HIDDEN",
+                    "TooltipTitleType": "PRIMARY_VALUE",
+                    "TooltipFields": [
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-departmen-2e3d6e.0.1769058819191",
+                          "Visibility": "VISIBLE"
+                        }
+                      },
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-hours_wor-7939af.1.1769058822976",
+                          "Visibility": "VISIBLE"
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "Actions": [],
+              "ColumnHierarchies": []
+            }
+          },
+          {
+            "BarChartVisual": {
+              "VisualId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_c5f108fe-b4fe-437f-9458-fdc3490e3e0c",
+              "Title": {
+                "Visibility": "VISIBLE"
+              },
+              "Subtitle": {
+                "Visibility": "VISIBLE"
+              },
+              "ChartConfiguration": {
+                "FieldWells": {
+                  "BarChartAggregatedFieldWells": {
+                    "Category": [
+                      {
+                        "CategoricalDimensionField": {
+                          "FieldId": "employee_-departmen-2e3d6e.0.1769058940979",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "department"
+                          }
+                        }
+                      }
+                    ],
+                    "Values": [
+                      {
+                        "NumericalMeasureField": {
+                          "FieldId": "employee_-hours_wor-7939af.1.1769058944832",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "hours_worked"
+                          },
+                          "AggregationFunction": {
+                            "SimpleNumericalAggregation": "AVERAGE"
+                          }
+                        }
+                      }
+                    ],
+                    "Colors": [
+                      {
+                        "CategoricalDimensionField": {
+                          "FieldId": "employee_-attendanc-1608c4.2.1769058980402",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "attendance_status"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                "SortConfiguration": {
+                  "CategorySort": [
+                    {
+                      "FieldSort": {
+                        "FieldId": "employee_-departmen-2e3d6e.0.1769058940979",
+                        "Direction": "DESC"
+                      }
+                    }
+                  ],
+                  "CategoryItemsLimit": {
+                    "OtherCategories": "INCLUDE"
+                  },
+                  "ColorItemsLimit": {
+                    "OtherCategories": "INCLUDE"
+                  },
+                  "SmallMultiplesLimitConfiguration": {
+                    "OtherCategories": "INCLUDE"
+                  }
+                },
+                "Orientation": "VERTICAL",
+                "BarsArrangement": "STACKED",
+                "DataLabels": {
+                  "Visibility": "HIDDEN",
+                  "Overlap": "DISABLE_OVERLAP"
+                },
+                "Tooltip": {
+                  "TooltipVisibility": "VISIBLE",
+                  "SelectedTooltipType": "DETAILED",
+                  "FieldBasedTooltip": {
+                    "AggregationVisibility": "HIDDEN",
+                    "TooltipTitleType": "PRIMARY_VALUE",
+                    "TooltipFields": [
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-departmen-2e3d6e.0.1769058940979",
+                          "Visibility": "VISIBLE"
+                        }
+                      },
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-hours_wor-7939af.1.1769058944832",
+                          "Visibility": "VISIBLE"
+                        }
+                      },
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-attendanc-1608c4.2.1769058980402",
+                          "Visibility": "VISIBLE"
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "Actions": [],
+              "ColumnHierarchies": []
+            }
+          },
+          {
+            "ComboChartVisual": {
+              "VisualId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_2ff78277-c05e-44a2-aec1-a5bf3f932e3e",
+              "Title": {
+                "Visibility": "VISIBLE"
+              },
+              "Subtitle": {
+                "Visibility": "VISIBLE"
+              },
+              "ChartConfiguration": {
+                "FieldWells": {
+                  "ComboChartAggregatedFieldWells": {
+                    "Category": [
+                      {
+                        "DateDimensionField": {
+                          "FieldId": "employee_-attendanc-128f77.0.1769059123209",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "attendance_date"
+                          },
+                          "DateGranularity": "MONTH",
+                          "HierarchyId": "employee_-attendanc-128f77.0.1769059123209"
+                        }
+                      }
+                    ],
+                    "BarValues": [
+                      {
+                        "NumericalMeasureField": {
+                          "FieldId": "employee_-hours_wor-7939af.1.1769059128381",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "hours_worked"
+                          },
+                          "AggregationFunction": {
+                            "SimpleNumericalAggregation": "SUM"
+                          }
+                        }
+                      }
+                    ],
+                    "Colors": [],
+                    "LineValues": [
+                      {
+                        "NumericalMeasureField": {
+                          "FieldId": "employee_-late_minu-885c40.2.1769059153401",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "late_minutes"
+                          },
+                          "AggregationFunction": {
+                            "SimpleNumericalAggregation": "SUM"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                "SortConfiguration": {
+                  "CategorySort": [
+                    {
+                      "FieldSort": {
+                        "FieldId": "employee_-attendanc-128f77.0.1769059123209",
+                        "Direction": "ASC"
+                      }
+                    }
+                  ],
+                  "CategoryItemsLimit": {
+                    "OtherCategories": "INCLUDE"
+                  },
+                  "ColorItemsLimit": {
+                    "OtherCategories": "INCLUDE"
+                  }
+                },
+                "BarsArrangement": "CLUSTERED",
+                "Legend": {
+                  "Width": "100px"
+                },
+                "BarDataLabels": {
+                  "Visibility": "HIDDEN",
+                  "Overlap": "DISABLE_OVERLAP"
+                },
+                "Tooltip": {
+                  "TooltipVisibility": "VISIBLE",
+                  "SelectedTooltipType": "DETAILED",
+                  "FieldBasedTooltip": {
+                    "AggregationVisibility": "HIDDEN",
+                    "TooltipTitleType": "PRIMARY_VALUE",
+                    "TooltipFields": [
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-attendanc-128f77.0.1769059123209",
+                          "Visibility": "VISIBLE",
+                          "TooltipTarget": "BOTH"
+                        }
+                      },
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-hours_wor-7939af.1.1769059128381",
+                          "Visibility": "VISIBLE",
+                          "TooltipTarget": "BAR"
+                        }
+                      },
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-late_minu-885c40.2.1769059153401",
+                          "Visibility": "VISIBLE",
+                          "TooltipTarget": "LINE"
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "Actions": [],
+              "ColumnHierarchies": [
+                {
+                  "DateTimeHierarchy": {
+                    "HierarchyId": "employee_-attendanc-128f77.0.1769059123209"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "LineChartVisual": {
+              "VisualId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_2e478a95-f466-4372-b2af-d873ef5e57ff",
+              "Title": {
+                "Visibility": "VISIBLE"
+              },
+              "Subtitle": {
+                "Visibility": "VISIBLE"
+              },
+              "ChartConfiguration": {
+                "FieldWells": {
+                  "LineChartAggregatedFieldWells": {
+                    "Category": [
+                      {
+                        "DateDimensionField": {
+                          "FieldId": "employee_-attendanc-128f77.0.1769059293145",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "attendance_date"
+                          },
+                          "DateGranularity": "MONTH",
+                          "HierarchyId": "employee_-attendanc-128f77.0.1769059293145"
+                        }
+                      }
+                    ],
+                    "Values": [
+                      {
+                        "NumericalMeasureField": {
+                          "FieldId": "employee_-hours_wor-7939af.1.1769059296528",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "hours_worked"
+                          },
+                          "AggregationFunction": {
+                            "SimpleNumericalAggregation": "AVERAGE"
+                          }
+                        }
+                      }
+                    ],
+                    "Colors": [
+                      {
+                        "CategoricalDimensionField": {
+                          "FieldId": "employee_-departmen-2e3d6e.2.1769059303641",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "department"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                "SortConfiguration": {
+                  "CategorySort": [
+                    {
+                      "FieldSort": {
+                        "FieldId": "employee_-attendanc-128f77.0.1769059293145",
+                        "Direction": "DESC"
+                      }
+                    }
+                  ],
+                  "CategoryItemsLimitConfiguration": {
+                    "OtherCategories": "INCLUDE"
+                  },
+                  "ColorItemsLimitConfiguration": {
+                    "OtherCategories": "INCLUDE"
+                  },
+                  "SmallMultiplesLimitConfiguration": {
+                    "OtherCategories": "INCLUDE"
+                  }
+                },
+                "Type": "STACKED_AREA",
+                "DataLabels": {
+                  "Visibility": "HIDDEN",
+                  "Overlap": "DISABLE_OVERLAP"
+                },
+                "Tooltip": {
+                  "TooltipVisibility": "VISIBLE",
+                  "SelectedTooltipType": "DETAILED",
+                  "FieldBasedTooltip": {
+                    "AggregationVisibility": "HIDDEN",
+                    "TooltipTitleType": "PRIMARY_VALUE",
+                    "TooltipFields": [
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-attendanc-128f77.0.1769059293145",
+                          "Visibility": "VISIBLE"
+                        }
+                      },
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-departmen-2e3d6e.2.1769059303641",
+                          "Visibility": "VISIBLE"
+                        }
+                      },
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-hours_wor-7939af.1.1769059296528",
+                          "Visibility": "VISIBLE"
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "Actions": [],
+              "ColumnHierarchies": [
+                {
+                  "DateTimeHierarchy": {
+                    "HierarchyId": "employee_-attendanc-128f77.0.1769059293145"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "TableVisual": {
+              "VisualId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_e3043f59-6e88-4c36-8357-d5c09f32cab6",
+              "Title": {
+                "Visibility": "VISIBLE"
+              },
+              "Subtitle": {
+                "Visibility": "VISIBLE"
+              },
+              "ChartConfiguration": {
+                "FieldWells": {
+                  "TableAggregatedFieldWells": {
+                    "GroupBy": [
+                      {
+                        "CategoricalDimensionField": {
+                          "FieldId": "employee_-employee_-1a1a9a.0.1769059379158",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "employee_id"
+                          }
+                        }
+                      },
+                      {
+                        "CategoricalDimensionField": {
+                          "FieldId": "employee_-employee_-bebc81.1.1769059381556",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "employee_name"
+                          }
+                        }
+                      },
+                      {
+                        "CategoricalDimensionField": {
+                          "FieldId": "employee_-departmen-2e3d6e.2.1769059385352",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "department"
+                          }
+                        }
+                      },
+                      {
+                        "CategoricalDimensionField": {
+                          "FieldId": "employee_-role-46d448.3.1769059390000",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "role"
+                          }
+                        }
+                      },
+                      {
+                        "CategoricalDimensionField": {
+                          "FieldId": "employee_-attendanc-1608c4.4.1769059392830",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "attendance_status"
+                          }
+                        }
+                      }
+                    ],
+                    "Values": [
+                      {
+                        "NumericalMeasureField": {
+                          "FieldId": "employee_-hours_wor-7939af.5.1769059402738",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "hours_worked"
+                          },
+                          "AggregationFunction": {
+                            "SimpleNumericalAggregation": "SUM"
+                          }
+                        }
+                      },
+                      {
+                        "NumericalMeasureField": {
+                          "FieldId": "employee_-late_minu-885c40.7.1769059428962",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "late_minutes"
+                          },
+                          "AggregationFunction": {
+                            "SimpleNumericalAggregation": "SUM"
+                          }
+                        }
+                      },
+                      {
+                        "NumericalMeasureField": {
+                          "FieldId": "employee_-overtime_-0cb47d.7.1769059445518",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "overtime_hours"
+                          },
+                          "AggregationFunction": {
+                            "SimpleNumericalAggregation": "SUM"
+                          }
+                        }
+                      },
+                      {
+                        "NumericalMeasureField": {
+                          "FieldId": "employee_-performan-220006.8.1769059454465",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "performance_rating"
+                          },
+                          "AggregationFunction": {
+                            "SimpleNumericalAggregation": "AVERAGE"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                "SortConfiguration": {
+                  "RowSort": [
+                    {
+                      "FieldSort": {
+                        "FieldId": "employee_-attendanc-1608c4.4.1769059392830",
+                        "Direction": "DESC"
+                      }
+                    }
+                  ]
+                }
+              },
+              "Actions": []
+            }
+          },
+          {
+            "ScatterPlotVisual": {
+              "VisualId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_5030969e-8353-4ded-bebb-60a41802e993",
+              "Title": {
+                "Visibility": "VISIBLE"
+              },
+              "Subtitle": {
+                "Visibility": "VISIBLE"
+              },
+              "ChartConfiguration": {
+                "FieldWells": {
+                  "ScatterPlotCategoricallyAggregatedFieldWells": {
+                    "XAxis": [
+                      {
+                        "NumericalMeasureField": {
+                          "FieldId": "employee_-hours_wor-7939af.0.1769059592928",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "hours_worked"
+                          },
+                          "AggregationFunction": {
+                            "SimpleNumericalAggregation": "AVERAGE"
+                          }
+                        }
+                      }
+                    ],
+                    "YAxis": [
+                      {
+                        "NumericalMeasureField": {
+                          "FieldId": "employee_-performan-220006.1.1769059596513",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "performance_rating"
+                          },
+                          "AggregationFunction": {
+                            "SimpleNumericalAggregation": "AVERAGE"
+                          }
+                        }
+                      }
+                    ],
+                    "Category": [
+                      {
+                        "CategoricalDimensionField": {
+                          "FieldId": "employee_-departmen-2e3d6e.2.1769059616993",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "department"
+                          }
+                        }
+                      }
+                    ],
+                    "Size": [
+                      {
+                        "NumericalMeasureField": {
+                          "FieldId": "employee_-overtime_-0cb47d.3.1769059638524",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "overtime_hours"
+                          },
+                          "AggregationFunction": {
+                            "SimpleNumericalAggregation": "AVERAGE"
+                          }
+                        }
+                      }
+                    ],
+                    "Label": []
+                  }
+                },
+                "SortConfiguration": {
+                  "ScatterPlotLimitConfiguration": {
+                    "ItemsLimit": 2500,
+                    "OtherCategories": "EXCLUDE"
+                  }
+                },
+                "Tooltip": {
+                  "TooltipVisibility": "VISIBLE",
+                  "SelectedTooltipType": "DETAILED",
+                  "FieldBasedTooltip": {
+                    "AggregationVisibility": "HIDDEN",
+                    "TooltipTitleType": "PRIMARY_VALUE",
+                    "TooltipFields": [
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-departmen-2e3d6e.2.1769059616993",
+                          "Visibility": "VISIBLE"
+                        }
+                      },
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-performan-220006.1.1769059596513",
+                          "Visibility": "VISIBLE"
+                        }
+                      },
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-overtime_-0cb47d.3.1769059638524",
+                          "Visibility": "VISIBLE"
+                        }
+                      },
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-hours_wor-7939af.0.1769059592928",
+                          "Visibility": "VISIBLE"
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "Actions": [],
+              "ColumnHierarchies": []
+            }
+          },
+          {
+            "PieChartVisual": {
+              "VisualId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_2718339f-d49f-4479-aee8-124a0e104099",
+              "Title": {
+                "Visibility": "VISIBLE"
+              },
+              "Subtitle": {
+                "Visibility": "VISIBLE"
+              },
+              "ChartConfiguration": {
+                "FieldWells": {
+                  "PieChartAggregatedFieldWells": {
+                    "Category": [
+                      {
+                        "CategoricalDimensionField": {
+                          "FieldId": "employee_-attendanc-1608c4.0.1769059783115",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "attendance_status"
+                          }
+                        }
+                      }
+                    ],
+                    "Values": [
+                      {
+                        "CategoricalMeasureField": {
+                          "FieldId": "employee_-employee_-1a1a9a.1.1769059790392",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "employee_id"
+                          },
+                          "AggregationFunction": "COUNT"
+                        }
+                      }
+                    ]
+                  }
+                },
+                "SortConfiguration": {
+                  "CategorySort": [
+                    {
+                      "FieldSort": {
+                        "FieldId": "employee_-employee_-1a1a9a.1.1769059790392",
+                        "Direction": "DESC"
+                      }
+                    }
+                  ],
+                  "CategoryItemsLimit": {
+                    "OtherCategories": "INCLUDE"
+                  },
+                  "SmallMultiplesLimitConfiguration": {
+                    "OtherCategories": "INCLUDE"
+                  }
+                },
+                "DonutOptions": {
+                  "ArcOptions": {
+                    "ArcThickness": "MEDIUM"
+                  }
+                },
+                "DataLabels": {
+                  "Visibility": "VISIBLE",
+                  "Overlap": "DISABLE_OVERLAP"
+                },
+                "Tooltip": {
+                  "TooltipVisibility": "VISIBLE",
+                  "SelectedTooltipType": "DETAILED",
+                  "FieldBasedTooltip": {
+                    "AggregationVisibility": "HIDDEN",
+                    "TooltipTitleType": "PRIMARY_VALUE",
+                    "TooltipFields": [
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-attendanc-1608c4.0.1769059783115",
+                          "Visibility": "VISIBLE"
+                        }
+                      },
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-employee_-1a1a9a.1.1769059790392",
+                          "Visibility": "VISIBLE"
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "Actions": [],
+              "ColumnHierarchies": []
+            }
+          },
+          {
+            "LineChartVisual": {
+              "VisualId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_b8490cc0-06e5-42a3-9715-ce9dd95cc982",
+              "Title": {
+                "Visibility": "VISIBLE"
+              },
+              "Subtitle": {
+                "Visibility": "VISIBLE"
+              },
+              "ChartConfiguration": {
+                "FieldWells": {
+                  "LineChartAggregatedFieldWells": {
+                    "Category": [
+                      {
+                        "DateDimensionField": {
+                          "FieldId": "employee_-attendanc-128f77.1.1769069297546",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "attendance_date"
+                          },
+                          "HierarchyId": "employee_-attendanc-128f77.1.1769069297546"
+                        }
+                      }
+                    ],
+                    "Values": [
+                      {
+                        "NumericalMeasureField": {
+                          "FieldId": "employee_-hours_wor-7939af.1.1769068747128",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "hours_worked"
+                          },
+                          "AggregationFunction": {
+                            "SimpleNumericalAggregation": "AVERAGE"
+                          }
+                        }
+                      }
+                    ],
+                    "Colors": []
+                  }
+                },
+                "SortConfiguration": {
+                  "CategorySort": [
+                    {
+                      "FieldSort": {
+                        "FieldId": "employee_-attendanc-128f77.1.1769069297546",
+                        "Direction": "DESC"
+                      }
+                    }
+                  ],
+                  "CategoryItemsLimitConfiguration": {
+                    "OtherCategories": "INCLUDE"
+                  },
+                  "ColorItemsLimitConfiguration": {
+                    "OtherCategories": "INCLUDE"
+                  },
+                  "SmallMultiplesLimitConfiguration": {
+                    "OtherCategories": "INCLUDE"
+                  }
+                },
+                "Type": "LINE",
+                "DataLabels": {
+                  "Visibility": "HIDDEN",
+                  "Overlap": "DISABLE_OVERLAP"
+                },
+                "Tooltip": {
+                  "TooltipVisibility": "VISIBLE",
+                  "SelectedTooltipType": "DETAILED",
+                  "FieldBasedTooltip": {
+                    "AggregationVisibility": "HIDDEN",
+                    "TooltipTitleType": "PRIMARY_VALUE",
+                    "TooltipFields": [
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-hours_wor-7939af.1.1769068747128",
+                          "Visibility": "VISIBLE"
+                        }
+                      },
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-attendanc-128f77.1.1769069297546",
+                          "Visibility": "VISIBLE"
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "Actions": [],
+              "ColumnHierarchies": [
+                {
+                  "DateTimeHierarchy": {
+                    "HierarchyId": "employee_-attendanc-128f77.1.1769069297546"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "Layouts": [
+          {
+            "Configuration": {
+              "GridLayout": {
+                "Elements": [
+                  {
+                    "ElementId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_d749e87c-842f-4c6f-a99e-327f10ac5079",
+                    "ElementType": "VISUAL",
+                    "ColumnIndex": 0,
+                    "ColumnSpan": 10,
+                    "RowIndex": 0,
+                    "RowSpan": 7
+                  },
+                  {
+                    "ElementId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_8fcc6762-0f4c-4150-b5e6-b6d83ee3aefe",
+                    "ElementType": "VISUAL",
+                    "ColumnIndex": 10,
+                    "ColumnSpan": 10,
+                    "RowIndex": 0,
+                    "RowSpan": 7
+                  },
+                  {
+                    "ElementId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_c5f108fe-b4fe-437f-9458-fdc3490e3e0c",
+                    "ElementType": "VISUAL",
+                    "ColumnIndex": 20,
+                    "ColumnSpan": 10,
+                    "RowIndex": 0,
+                    "RowSpan": 7
+                  },
+                  {
+                    "ElementId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_2ff78277-c05e-44a2-aec1-a5bf3f932e3e",
+                    "ElementType": "VISUAL",
+                    "ColumnIndex": 0,
+                    "ColumnSpan": 10,
+                    "RowIndex": 7,
+                    "RowSpan": 7
+                  },
+                  {
+                    "ElementId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_2e478a95-f466-4372-b2af-d873ef5e57ff",
+                    "ElementType": "VISUAL",
+                    "ColumnIndex": 10,
+                    "ColumnSpan": 10,
+                    "RowIndex": 7,
+                    "RowSpan": 7
+                  },
+                  {
+                    "ElementId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_e3043f59-6e88-4c36-8357-d5c09f32cab6",
+                    "ElementType": "VISUAL",
+                    "ColumnIndex": 20,
+                    "ColumnSpan": 10,
+                    "RowIndex": 7,
+                    "RowSpan": 7
+                  },
+                  {
+                    "ElementId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_5030969e-8353-4ded-bebb-60a41802e993",
+                    "ElementType": "VISUAL",
+                    "ColumnIndex": 0,
+                    "ColumnSpan": 10,
+                    "RowIndex": 14,
+                    "RowSpan": 7
+                  },
+                  {
+                    "ElementId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_2718339f-d49f-4479-aee8-124a0e104099",
+                    "ElementType": "VISUAL",
+                    "ColumnIndex": 10,
+                    "ColumnSpan": 10,
+                    "RowIndex": 14,
+                    "RowSpan": 7
+                  },
+                  {
+                    "ElementId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_b8490cc0-06e5-42a3-9715-ce9dd95cc982",
+                    "ElementType": "VISUAL",
+                    "ColumnIndex": 20,
+                    "ColumnSpan": 10,
+                    "RowIndex": 14,
+                    "RowSpan": 7
+                  }
+                ],
+                "CanvasSizeOptions": {
+                  "ScreenCanvasSizeOptions": {
+                    "ResizeOption": "FIXED",
+                    "OptimizedViewPortWidth": "1600px"
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "ContentType": "INTERACTIVE"
+      }
+    ],
+    "CalculatedFields": [],
+    "ParameterDeclarations": [],
+    "FilterGroups": [],
+    "AnalysisDefaults": {
+      "DefaultNewSheetConfiguration": {
+        "InteractiveLayoutConfiguration": {
+          "Grid": {
+            "CanvasSizeOptions": {
+              "ScreenCanvasSizeOptions": {
+                "ResizeOption": "FIXED",
+                "OptimizedViewPortWidth": "1600px"
+              }
+            }
+          }
+        },
+        "SheetContentType": "INTERACTIVE"
+      }
+    },
+    "Options": {
+      "WeekStart": "SUNDAY"
+    }
+  },
+  "RequestId": "1f865ecc-4354-494e-bba6-11f7eee2c679",
+  "DashboardPublishOptions": {
+    "AdHocFilteringOption": {
+      "AvailabilityStatus": "DISABLED"
+    },
+    "ExportToCSVOption": {
+      "AvailabilityStatus": "ENABLED"
+    },
+    "SheetControlsOption": {
+      "VisibilityState": "COLLAPSED"
+    },
+    "SheetLayoutElementMaximizationOption": {
+      "AvailabilityStatus": "ENABLED"
+    },
+    "VisualMenuOption": {
+      "AvailabilityStatus": "ENABLED"
+    },
+    "VisualAxisSortOption": {
+      "AvailabilityStatus": "ENABLED"
+    },
+    "ExportWithHiddenFieldsOption": {
+      "AvailabilityStatus": "DISABLED"
+    },
+    "DataPointDrillUpDownOption": {
+      "AvailabilityStatus": "ENABLED"
+    },
+    "DataPointMenuLabelOption": {
+      "AvailabilityStatus": "ENABLED"
+    },
+    "DataPointTooltipOption": {
+      "AvailabilityStatus": "ENABLED"
+    }
+  }
+}

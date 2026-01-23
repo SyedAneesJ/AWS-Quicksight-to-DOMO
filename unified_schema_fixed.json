@@ -1,0 +1,286 @@
+{
+  "schemaVersion": "1.3",
+  "source": {
+    "tool": "AWS QuickSight",
+    "dashboardId": "e49d1c30-1172-44e5-9794-f47a4c87cef4",
+    "dashboardName": "Dashboard-Migration V1"
+  },
+  "datasets": [
+    {
+      "id": "dataset_1",
+      "name": "employee_department_attendance_quicksight_safe.csv",
+      "sourceArn": "arn:aws:quicksight:ap-south-1:553737138720:dataset/f9545b95-4241-48e9-83ab-48c45da98f14"
+    }
+  ],
+  "calculatedFields": [],
+  "pages": [
+    {
+      "id": "e49d1c30-1172-44e5-9794-f47a4c87cef4_4a33912a-3517-4ee0-8bd3-ae6ef834f3d3",
+      "name": "Sheet 1",
+      "visuals": [
+        {
+          "id": "e49d1c30-1172-44e5-9794-f47a4c87cef4_d749e87c-842f-4c6f-a99e-327f10ac5079",
+          "type": "KPI",
+          "title": "Sheet 1 KPI",
+          "datasetRef": "dataset_1",
+          "measures": [
+            {
+              "column": "hours_worked",
+              "aggregation": {
+                "SimpleNumericalAggregation": "AVERAGE"
+              }
+            }
+          ]
+        },
+        {
+          "id": "e49d1c30-1172-44e5-9794-f47a4c87cef4_8fcc6762-0f4c-4150-b5e6-b6d83ee3aefe",
+          "type": "BAR",
+          "title": "Average of hours_worked by department",
+          "datasetRef": "dataset_1",
+          "x": [
+            "department"
+          ],
+          "stack": [],
+          "measures": [
+            {
+              "column": "hours_worked",
+              "aggregation": {
+                "SimpleNumericalAggregation": "AVERAGE"
+              }
+            }
+          ]
+        },
+        {
+          "id": "e49d1c30-1172-44e5-9794-f47a4c87cef4_c5f108fe-b4fe-437f-9458-fdc3490e3e0c",
+          "type": "STACKED_BAR",
+          "title": "Average of hours_worked by department and attendance_status",
+          "datasetRef": "dataset_1",
+          "x": [
+            "department"
+          ],
+          "stack": [
+            "attendance_status"
+          ],
+          "measures": [
+            {
+              "column": "hours_worked",
+              "aggregation": {
+                "SimpleNumericalAggregation": "AVERAGE"
+              }
+            }
+          ]
+        },
+        {
+          "id": "e49d1c30-1172-44e5-9794-f47a4c87cef4_2ff78277-c05e-44a2-aec1-a5bf3f932e3e",
+          "type": "COMBO",
+          "title": "Sum of hours_worked and Sum of late_minutes by attendance_date",
+          "datasetRef": "dataset_1",
+          "x": [
+            {
+              "column": "attendance_date",
+              "timeGrain": "DAY"
+            }
+          ],
+          "series": [],
+          "barMeasures": [
+            {
+              "column": "hours_worked",
+              "aggregation": {
+                "SimpleNumericalAggregation": "SUM"
+              },
+              "type": "BAR"
+            }
+          ],
+          "lineMeasures": [
+            {
+              "column": "late_minutes",
+              "aggregation": {
+                "SimpleNumericalAggregation": "SUM"
+              },
+              "type": "LINE"
+            }
+          ],
+          "measures": [
+            {
+              "column": "hours_worked",
+              "aggregation": {
+                "SimpleNumericalAggregation": "SUM"
+              },
+              "type": "BAR"
+            },
+            {
+              "column": "late_minutes",
+              "aggregation": {
+                "SimpleNumericalAggregation": "SUM"
+              },
+              "type": "LINE"
+            }
+          ]
+        },
+        {
+          "id": "e49d1c30-1172-44e5-9794-f47a4c87cef4_2e478a95-f466-4372-b2af-d873ef5e57ff",
+          "type": "STACKED_AREA",
+          "title": "Average of hours_worked by attendance_date and department",
+          "datasetRef": "dataset_1",
+          "x": [
+            {
+              "column": "attendance_date",
+              "timeGrain": "MONTH"
+            }
+          ],
+          "stack": [
+            "department"
+          ],
+          "measures": [
+            {
+              "column": "hours_worked",
+              "aggregation": "AVERAGE"
+            }
+          ],
+          "axes": {
+            "x": {
+              "title": "Attendance Date"
+            },
+            "y": {
+              "title": "Average Of Hours Worked"
+            }
+          }
+        },
+        {
+          "id": "e49d1c30-1172-44e5-9794-f47a4c87cef4_e3043f59-6e88-4c36-8357-d5c09f32cab6",
+          "type": "TABLE",
+          "title": "Sum of hours_worked by employee_id, employee_name, department, role, attendance_status",
+          "datasetRef": "dataset_1",
+          "columns": [
+            {
+              "field": "employee_id",
+              "type": "DIMENSION",
+              "dataType": "STRING"
+            },
+            {
+              "field": "employee_name",
+              "type": "DIMENSION",
+              "dataType": "STRING"
+            },
+            {
+              "field": "department",
+              "type": "DIMENSION",
+              "dataType": "STRING"
+            },
+            {
+              "field": "role",
+              "type": "DIMENSION",
+              "dataType": "STRING"
+            },
+            {
+              "field": "attendance_status",
+              "type": "DIMENSION",
+              "dataType": "STRING"
+            },
+            {
+              "field": "hours_worked",
+              "type": "MEASURE",
+              "aggregation": {
+                "SimpleNumericalAggregation": "SUM"
+              },
+              "dataType": "NUMERIC"
+            },
+            {
+              "field": "late_minutes",
+              "type": "MEASURE",
+              "aggregation": {
+                "SimpleNumericalAggregation": "SUM"
+              },
+              "dataType": "NUMERIC"
+            },
+            {
+              "field": "overtime_hours",
+              "type": "MEASURE",
+              "aggregation": {
+                "SimpleNumericalAggregation": "SUM"
+              },
+              "dataType": "NUMERIC"
+            },
+            {
+              "field": "performance_rating",
+              "type": "MEASURE",
+              "aggregation": {
+                "SimpleNumericalAggregation": "AVERAGE"
+              },
+              "dataType": "NUMERIC"
+            }
+          ],
+          "config": {
+            "showTotals": false,
+            "conditionalFormatting": false,
+            "pagination": {
+              "enabled": true,
+              "pageSize": 50
+            }
+          }
+        },
+        {
+          "id": "e49d1c30-1172-44e5-9794-f47a4c87cef4_5030969e-8353-4ded-bebb-60a41802e993",
+          "type": "BUBBLE",
+          "title": "AVERAGE of hours_worked vs AVERAGE of performance_rating by department",
+          "datasetRef": "dataset_1",
+          "categories": [
+            "department"
+          ],
+          "measures": [
+            {
+              "column": "hours_worked",
+              "aggregation": {
+                "SimpleNumericalAggregation": "AVERAGE"
+              },
+              "mapping": "XAXIS"
+            },
+            {
+              "column": "performance_rating",
+              "aggregation": {
+                "SimpleNumericalAggregation": "AVERAGE"
+              },
+              "mapping": "YAXIS"
+            },
+            {
+              "column": "overtime_hours",
+              "aggregation": {
+                "SimpleNumericalAggregation": "AVERAGE"
+              },
+              "mapping": "SIZE"
+            }
+          ],
+          "config": {
+            "isBubble": true,
+            "showLegend": true
+          },
+          "axes": {
+            "x": {
+              "title": "Hours Worked",
+              "aggregation": "AVERAGE"
+            },
+            "y": {
+              "title": "Performance Rating",
+              "aggregation": "AVERAGE"
+            }
+          }
+        },
+        {
+          "id": "e49d1c30-1172-44e5-9794-f47a4c87cef4_2718339f-d49f-4479-aee8-124a0e104099",
+          "type": "DONUT",
+          "title": "Count of employee_id by attendance_status",
+          "datasetRef": "dataset_1",
+          "categories": [
+            "attendance_status"
+          ],
+          "measures": [
+            {
+              "column": "employee_id",
+              "aggregation": "COUNT"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
