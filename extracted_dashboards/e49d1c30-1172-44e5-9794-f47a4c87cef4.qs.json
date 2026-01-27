@@ -1,13 +1,13 @@
 {
   "ResponseMetadata": {
-    "RequestId": "1f865ecc-4354-494e-bba6-11f7eee2c679",
+    "RequestId": "7ddf68ee-324d-43cc-a9a7-80fb5bba2260",
     "HTTPStatusCode": 200,
     "HTTPHeaders": {
-      "date": "Thu, 22 Jan 2026 08:13:00 GMT",
+      "date": "Tue, 27 Jan 2026 05:00:44 GMT",
       "content-type": "application/json",
-      "content-length": "37882",
+      "content-length": "42147",
       "connection": "keep-alive",
-      "x-amzn-requestid": "1f865ecc-4354-494e-bba6-11f7eee2c679",
+      "x-amzn-requestid": "7ddf68ee-324d-43cc-a9a7-80fb5bba2260",
       "strict-transport-security": "max-age=31536000; includeSubdomains; preload"
     },
     "RetryAttempts": 0
@@ -929,6 +929,7 @@
                             "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
                             "ColumnName": "attendance_date"
                           },
+                          "DateGranularity": "MONTH",
                           "HierarchyId": "employee_-attendanc-128f77.1.1769069297546"
                         }
                       }
@@ -1002,6 +1003,121 @@
                 {
                   "DateTimeHierarchy": {
                     "HierarchyId": "employee_-attendanc-128f77.1.1769069297546"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "LineChartVisual": {
+              "VisualId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_64918d5f-98a4-421b-afc6-00f012732955",
+              "Title": {
+                "Visibility": "VISIBLE"
+              },
+              "Subtitle": {
+                "Visibility": "VISIBLE"
+              },
+              "ChartConfiguration": {
+                "FieldWells": {
+                  "LineChartAggregatedFieldWells": {
+                    "Category": [
+                      {
+                        "DateDimensionField": {
+                          "FieldId": "employee_-attendanc-128f77.0.1769488300577",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "attendance_date"
+                          },
+                          "DateGranularity": "MONTH",
+                          "HierarchyId": "employee_-attendanc-128f77.0.1769488300577"
+                        }
+                      }
+                    ],
+                    "Values": [
+                      {
+                        "NumericalMeasureField": {
+                          "FieldId": "employee_-hours_wor-7939af.1.1769488304348",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "hours_worked"
+                          },
+                          "AggregationFunction": {
+                            "SimpleNumericalAggregation": "AVERAGE"
+                          }
+                        }
+                      }
+                    ],
+                    "Colors": [
+                      {
+                        "CategoricalDimensionField": {
+                          "FieldId": "employee_-departmen-2e3d6e.2.1769488330815",
+                          "Column": {
+                            "DataSetIdentifier": "employee_department_attendance_quicksight_safe.csv",
+                            "ColumnName": "department"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                "SortConfiguration": {
+                  "CategorySort": [
+                    {
+                      "FieldSort": {
+                        "FieldId": "employee_-attendanc-128f77.0.1769488300577",
+                        "Direction": "DESC"
+                      }
+                    }
+                  ],
+                  "CategoryItemsLimitConfiguration": {
+                    "OtherCategories": "INCLUDE"
+                  },
+                  "ColorItemsLimitConfiguration": {
+                    "OtherCategories": "INCLUDE"
+                  },
+                  "SmallMultiplesLimitConfiguration": {
+                    "OtherCategories": "INCLUDE"
+                  }
+                },
+                "Type": "LINE",
+                "DataLabels": {
+                  "Visibility": "HIDDEN",
+                  "Overlap": "DISABLE_OVERLAP"
+                },
+                "Tooltip": {
+                  "TooltipVisibility": "VISIBLE",
+                  "SelectedTooltipType": "DETAILED",
+                  "FieldBasedTooltip": {
+                    "AggregationVisibility": "HIDDEN",
+                    "TooltipTitleType": "PRIMARY_VALUE",
+                    "TooltipFields": [
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-attendanc-128f77.0.1769488300577",
+                          "Visibility": "VISIBLE"
+                        }
+                      },
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-hours_wor-7939af.1.1769488304348",
+                          "Visibility": "VISIBLE"
+                        }
+                      },
+                      {
+                        "FieldTooltipItem": {
+                          "FieldId": "employee_-departmen-2e3d6e.2.1769488330815",
+                          "Visibility": "VISIBLE"
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "Actions": [],
+              "ColumnHierarchies": [
+                {
+                  "DateTimeHierarchy": {
+                    "HierarchyId": "employee_-attendanc-128f77.0.1769488300577"
                   }
                 }
               ]
@@ -1084,6 +1200,12 @@
                     "ColumnSpan": 10,
                     "RowIndex": 14,
                     "RowSpan": 7
+                  },
+                  {
+                    "ElementId": "e49d1c30-1172-44e5-9794-f47a4c87cef4_64918d5f-98a4-421b-afc6-00f012732955",
+                    "ElementType": "VISUAL",
+                    "ColumnSpan": 18,
+                    "RowSpan": 12
                   }
                 ],
                 "CanvasSizeOptions": {
@@ -1121,7 +1243,7 @@
       "WeekStart": "SUNDAY"
     }
   },
-  "RequestId": "1f865ecc-4354-494e-bba6-11f7eee2c679",
+  "RequestId": "7ddf68ee-324d-43cc-a9a7-80fb5bba2260",
   "DashboardPublishOptions": {
     "AdHocFilteringOption": {
       "AvailabilityStatus": "DISABLED"

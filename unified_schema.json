@@ -283,10 +283,39 @@
           "x": [
             {
               "column": "attendance_date",
-              "timeGrain": "DAY"
+              "timeGrain": "MONTH"
             }
           ],
           "stack": [],
+          "measures": [
+            {
+              "column": "hours_worked",
+              "aggregation": "AVERAGE"
+            }
+          ],
+          "axes": {
+            "x": {
+              "title": "Attendance Date"
+            },
+            "y": {
+              "title": "Average Of Hours Worked"
+            }
+          }
+        },
+        {
+          "id": "e49d1c30-1172-44e5-9794-f47a4c87cef4_64918d5f-98a4-421b-afc6-00f012732955",
+          "type": "LINE",
+          "title": "Average Of Hours Worked by Attendance Date and Department",
+          "datasetRef": "dataset_1",
+          "x": [
+            {
+              "column": "attendance_date",
+              "timeGrain": "MONTH"
+            }
+          ],
+          "stack": [
+            "department"
+          ],
           "measures": [
             {
               "column": "hours_worked",

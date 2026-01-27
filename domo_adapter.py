@@ -279,6 +279,11 @@ class DomoAdapter:
         }
     
     def _build_line_payload(self, visual: dict):
+        """
+        ✅ UPDATED: Now supports both single-line and multi-line charts
+        - If visual has 'stack' field with values, creates multi-line chart
+        - Otherwise creates single-line chart
+        """
         dataset_id = self.dataset_resolver.resolve(visual["datasetRef"])
 
         # -------- X AXIS --------
@@ -303,6 +308,11 @@ class DomoAdapter:
         val_col = self._map_column(m["column"])
         aggregation = self._normalize_aggregation(m.get("aggregation", "SUM"))
 
+        # -------- CHECK FOR MULTI-LINE (SERIES) --------
+        stack_fields = visual.get("stack", [])
+        has_series = len(stack_fields) > 0
+        series_col = self._map_column(stack_fields[0]) if has_series else None
+
         # -------- AXIS TITLES --------
         x_title = visual.get("axes", {}).get("x", {}).get("title", "Date")
         y_title = visual.get("axes", {}).get("y", {}).get(
@@ -310,9 +320,13 @@ class DomoAdapter:
         )
 
         print(
-            f"📈 LINE date grain: {time_grain} -> "
+            f"📈 LINE chart - Date grain: {time_grain} -> "
             f"Domo: {domo_grain} -> Calendar: {calendar_column}"
         )
+        if has_series:
+            print(f"   Multi-line mode: SERIES = {series_col}")
+        else:
+            print(f"   Single-line mode")
 
         # -------- BIG NUMBER --------
         big_number_subscription = {
@@ -338,29 +352,43 @@ class DomoAdapter:
         }
 
         # -------- MAIN SUBSCRIPTION --------
+        main_columns = [
+            {
+                "column": calendar_column,
+                "calendar": True,
+                "mapping": "ITEM"
+            },
+            {
+                "column": val_col,
+                "aggregation": aggregation,
+                "mapping": "VALUE"
+            }
+        ]
+        
+        main_groupby = [
+            {
+                "column": calendar_column,
+                "calendar": True
+            }
+        ]
+
+        # ✅ ADD SERIES COLUMN FOR MULTI-LINE
+        if has_series:
+            main_columns.append({
+                "column": series_col,
+                "mapping": "SERIES"
+            })
+            main_groupby.append({
+                "column": series_col
+            })
+
         main_subscription = {
             "name": "main",
             "dataSourceId": dataset_id,
-            "columns": [
-                {
-                    "column": calendar_column,
-                    "calendar": True,
-                    "mapping": "ITEM"
-                },
-                {
-                    "column": val_col,
-                    "aggregation": aggregation,
-                    "mapping": "VALUE"
-                }
-            ],
+            "columns": main_columns,
             "filters": [],
             "orderBy": [],
-            "groupBy": [
-                {
-                    "column": calendar_column,
-                    "calendar": True
-                }
-            ],
+            "groupBy": main_groupby,
             "dateGrain": {
                 "column": x_col,              # actual date column
                 "dateTimeElement": domo_grain
