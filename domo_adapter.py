@@ -9,6 +9,27 @@ class DomoAdapter:
         self.column_mapping = column_mapping or {}
         self.calculated_fields_map = {}
 
+    #check if x-axis is a date or not - used for line chart (domo not allowing to create x-axis which is not date/time)
+    def _is_time_column(self, column_name: str) -> bool:
+        """
+        Heuristic check for time-based columns.
+        v1.0: name-based detection only.
+        """
+        col = column_name.lower()
+
+        time_keywords = [
+            "date",
+            "time",
+            "timestamp",
+            "created",
+            "updated",
+            "order_date",
+            "event_time"
+        ]
+
+        return any(k in col for k in time_keywords)
+
+
     def deploy_dashboard(self, unified_schema: dict, page_id: str):
         self._process_calculated_fields(unified_schema.get("calculatedFields", []))
         
@@ -91,6 +112,7 @@ class DomoAdapter:
         """Check if a column is a date field"""
         date_keywords = ["date", "time", "timestamp", "datetime", "day", "month", "year"]
         return any(keyword in column_name.lower() for keyword in date_keywords)
+
 
     def _deploy_visual(self, page_id: str, visual: dict):
         visual_type = visual["type"].upper()
