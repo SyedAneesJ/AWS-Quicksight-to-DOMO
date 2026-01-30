@@ -19,8 +19,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
+        "https://*.domo.com",
         "https://gwcteq-partner.domo.com",
         "https://f5bf4c29-48aa-4700-9075-73c2a1203375.domoapps.prod5.domo.com",
+        "https://*.domoapps.prod5.domo.com"
         # Add any other Domo app domains you see in the error
     ],
     allow_credentials=False,  # Changed to False to avoid credential issues
