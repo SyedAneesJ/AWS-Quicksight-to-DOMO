@@ -17,10 +17,11 @@ app = FastAPI(title="QuickSight to Domo Migration API")
 # CORS - FIXED: Cannot use "*" with allow_credentials=True
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 👈 Allow all origins. Replace with specific origins for security.
+    allow_origins=["*"],  # Allow all for now
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # ==================== MODELS ====================
