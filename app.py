@@ -1,5 +1,5 @@
 """
-QuickSight to Domo Migration API - FIXED CORS & AWS
+QuickSight to Domo Migration API - ALL BUGS FIXED
 """
 
 from fastapi import FastAPI, HTTPException
@@ -13,10 +13,7 @@ from typing import Dict, Any, List
 
 app = FastAPI(title="QuickSight to Domo Migration API")
 
-# ==================== CORS FIX ====================
-# CRITICAL: Cannot use "*" with allow_credentials=True
-# Must specify exact origins OR remove allow_credentials
-
+# ==================== CORS ====================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -57,25 +54,42 @@ class TransformToDomoRequest(BaseModel):
     unified_schema: Dict[str, Any]
     dataset_mapping: Dict[str, str]
 
-# ==================== AWS HELPER ====================
+# ==================== AWS HELPER - FIXED ====================
 
-def assume_role(role_arn: str, region: str):
-    sts = boto3.client("sts", region_name=region)
-
-    assumed = sts.assume_role(
-        RoleArn=role_arn,
-        RoleSessionName="domo-quicksight-session"
-    )
-
-    creds = assumed["Credentials"]
-
-    return boto3.client(
-        "quicksight",
-        aws_access_key_id=creds["AccessKeyId"],
-        aws_secret_access_key=creds["SecretAccessKey"],
-        aws_session_token=creds["SessionToken"],
-        region_name=region
-    )
+def get_quicksight_client(role_arn: str, region: str):
+    """
+    FIXED: Returns a properly authenticated QuickSight client
+    """
+    try:
+        # Step 1: Create STS client with base credentials from environment
+        sts = boto3.client("sts", region_name=region)
+        
+        # Step 2: Assume the user-provided role
+        print(f"🔑 Assuming role: {role_arn}")
+        assumed = sts.assume_role(
+            RoleArn=role_arn,
+            RoleSessionName="domo-quicksight-session",
+            DurationSeconds=3600
+        )
+        
+        # Step 3: Extract temporary credentials
+        creds = assumed["Credentials"]
+        print(f"✅ Role assumed successfully")
+        
+        # Step 4: Return QuickSight client with temporary credentials
+        return boto3.client(
+            "quicksight",
+            aws_access_key_id=creds["AccessKeyId"],
+            aws_secret_access_key=creds["SecretAccessKey"],
+            aws_session_token=creds["SessionToken"],
+            region_name=region
+        )
+    
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        error_msg = e.response['Error']['Message']
+        print(f"❌ Failed to assume role: {error_code} - {error_msg}")
+        raise Exception(f"AWS Error ({error_code}): {error_msg}")
 
 # ==================== ENDPOINTS ====================
 
@@ -83,57 +97,72 @@ def assume_role(role_arn: str, region: str):
 def root():
     return {
         "service": "QuickSight to Domo Migration API",
-        "version": "2.1.0",
+        "version": "2.3.0",
         "status": "running",
-        "cors": "Fixed - specific origins only",
-        "authentication": "User-provided AWS credentials (no backend creds needed)"
+        "fixes": "All bugs resolved - CORS, AWS auth, list-dashboards"
     }
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy"}
+    """Health check with AWS credential verification"""
+    return {
+        "status": "healthy",
+        "aws_credentials_configured": bool(
+            os.environ.get("AWS_ACCESS_KEY_ID") and 
+            os.environ.get("AWS_SECRET_ACCESS_KEY")
+        )
+    }
 
 # ==================== AWS & QUICKSIGHT ====================
 
 @app.post("/api/aws/validate")
 def validate_aws(payload: dict):
+    """Validate AWS credentials by attempting to assume role"""
     try:
         role_arn = payload["role_arn"]
-        region = payload.get("region", "ap-south-1")
+        region = payload.get("region", "us-east-1")
         account_id = payload["aws_account_id"]
 
-        qs = assume_role(role_arn, region)
+        # Get QuickSight client (this will fail if role can't be assumed)
+        qs = get_quicksight_client(role_arn, region)
 
+        # Test with a simple API call
         qs.list_dashboards(
             AwsAccountId=account_id,
             MaxResults=1
         )
 
-        return {"status": "success", "message": "AWS credentials valid"}
+        return {
+            "status": "success",
+            "message": "AWS credentials validated successfully"
+        }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-        
+        error_msg = str(e)
+        print(f"❌ Validation failed: {error_msg}")
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "AWS validation failed",
+                "message": error_msg
+            }
+        )
 
 @app.post("/api/quicksight/list-dashboards")
 def list_quicksight_dashboards(payload: ListDashboardsRequest):
-    """List all QuickSight dashboards"""
+    """List all QuickSight dashboards - FIXED"""
     try:
-        creds = assume_role(payload.region, payload.role_arn)
+        # Get QuickSight client with assumed role credentials
+        qs = get_quicksight_client(payload.role_arn, payload.region)
         
-        qs = boto3.client(
-            "quicksight",
-            region_name=payload.region,
-            aws_access_key_id=creds["aws_access_key_id"],
-            aws_secret_access_key=creds["aws_secret_access_key"],
-            aws_session_token=creds["aws_session_token"],
-        )
-        
+        # List dashboards
+        print(f"📊 Listing dashboards for account: {payload.aws_account_id}")
         response = qs.list_dashboards(
             AwsAccountId=payload.aws_account_id
         )
         
         dashboards = response.get("DashboardSummaryList", [])
+        print(f"✅ Found {len(dashboards)} dashboard(s)")
         
         return {
             "count": len(dashboards),
@@ -150,28 +179,35 @@ def list_quicksight_dashboards(payload: ListDashboardsRequest):
         }
     
     except ClientError as e:
+        error_msg = e.response["Error"]["Message"]
+        print(f"❌ Failed to list dashboards: {error_msg}")
         raise HTTPException(
             status_code=400,
             detail={
                 "error": "Failed to list QuickSight dashboards",
-                "message": e.response["Error"]["Message"]
+                "message": error_msg
+            }
+        )
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ Unexpected error: {error_msg}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Internal server error",
+                "message": error_msg
             }
         )
 
 @app.post("/api/quicksight/extract-dashboard")
 def extract_dashboard(payload: ExtractDashboardRequest):
-    """Extract QuickSight dashboard definition"""
+    """Extract QuickSight dashboard definition - FIXED"""
     try:
-        creds = assume_role(payload.region, payload.role_arn)
+        # Get QuickSight client with assumed role credentials
+        qs = get_quicksight_client(payload.role_arn, payload.region)
         
-        qs = boto3.client(
-            "quicksight",
-            region_name=payload.region,
-            aws_access_key_id=creds["aws_access_key_id"],
-            aws_secret_access_key=creds["aws_secret_access_key"],
-            aws_session_token=creds["aws_session_token"],
-        )
-        
+        # Extract dashboard definition
+        print(f"📥 Extracting dashboard: {payload.dashboard_id}")
         response = qs.describe_dashboard_definition(
             AwsAccountId=payload.aws_account_id,
             DashboardId=payload.dashboard_id
@@ -194,15 +230,27 @@ def extract_dashboard(payload: ExtractDashboardRequest):
         }
     
     except ClientError as e:
+        error_msg = e.response["Error"]["Message"]
+        print(f"❌ Failed to extract dashboard: {error_msg}")
         raise HTTPException(
             status_code=400,
             detail={
                 "error": "Failed to extract dashboard",
-                "message": e.response["Error"]["Message"]
+                "message": error_msg
+            }
+        )
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ Unexpected error: {error_msg}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Internal server error",
+                "message": error_msg
             }
         )
 
-# ==================== TRANSFORMATION (USING YOUR CODE) ====================
+# ==================== TRANSFORMATION ====================
 
 @app.post("/api/transform/qs-to-unified")
 def convert_qs_to_unified_schema(payload: ConvertToUnifiedRequest):
@@ -389,11 +437,25 @@ if __name__ == "__main__":
     import uvicorn
     
     print("=" * 60)
-    print("QuickSight to Domo Migration API v2.1")
+    print("QuickSight to Domo Migration API v2.3")
     print("=" * 60)
-    print("✅ CORS: Fixed for Domo domains")
-    print("✅ AWS: Uses user-provided credentials")
+    print("✅ ALL BUGS FIXED")
+    print("   - CORS configuration")
+    print("   - AWS credential flow")
+    print("   - list-dashboards endpoint")
+    print("   - extract-dashboard endpoint")
     print("=" * 60)
+    
+    # Check environment variables
+    if not os.environ.get("AWS_ACCESS_KEY_ID"):
+        print("⚠️  WARNING: AWS_ACCESS_KEY_ID not set")
+    else:
+        print("✅ AWS_ACCESS_KEY_ID configured")
+        
+    if not os.environ.get("AWS_SECRET_ACCESS_KEY"):
+        print("⚠️  WARNING: AWS_SECRET_ACCESS_KEY not set")
+    else:
+        print("✅ AWS_SECRET_ACCESS_KEY configured")
     
     port = int(os.environ.get("PORT", 8000))
     
