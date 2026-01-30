@@ -18,17 +18,38 @@ app = FastAPI(title="QuickSight to Domo Migration API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
-        "https://*.domo.com",
-        "https://gwcteq-partner.domo.com",
+        "https://a731a307-0c2f-405a-81c9-7ca66b449380.domoapps.prod5.domo.com",
         "https://f5bf4c29-48aa-4700-9075-73c2a1203375.domoapps.prod5.domo.com",
-        "https://*.domoapps.prod5.domo.com"
-        # Add any other Domo app domains you see in the error
+        "https://gwcteq-partner.domo.com",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "https://*.onrender.com",  # Your Render domain
     ],
-    allow_credentials=False,  # Changed to False to avoid credential issues
-    allow_methods=["*"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Handle preflight OPTIONS requests
+@app.middleware("http")
+async def cors_middleware(request: Request, call_next):
+    if request.method == "OPTIONS":
+        response = Response()
+        response.headers["Access-Control-Allow-Origin"] = request.headers.get("origin", "*")
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
+    
+    response = await call_next(request)
+    
+    # Add CORS headers to all responses
+    origin = request.headers.get("origin")
+    if origin and any(domain in origin for domain in [".domo.com", ".domoapps.", "localhost"]):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    
+    return response
 
 # ==================== MODELS ====================
 
