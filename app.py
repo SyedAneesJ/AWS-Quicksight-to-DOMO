@@ -1,6 +1,5 @@
 """
-QuickSight to Domo Migration API - INTEGRATED WITH YOUR CODE
-Uses your existing: run_qs_to_unified.py, domo_adapter.py, dataset_resolver.py
+QuickSight to Domo Migration API - FIXED CORS & AWS
 """
 
 from fastapi import FastAPI, HTTPException
@@ -14,10 +13,18 @@ from typing import Dict, Any, List
 
 app = FastAPI(title="QuickSight to Domo Migration API")
 
-# CORS - FIXED: Cannot use "*" with allow_credentials=True
+# ==================== CORS FIX ====================
+# CRITICAL: Cannot use "*" with allow_credentials=True
+# Must specify exact origins OR remove allow_credentials
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all for now
+    allow_origins=[
+        "https://a731a307-0c2f-405a-81c9-7ca66b449380.domoapps.prod5.domo.com",
+        "https://gwcteq-partner.domo.com",
+        "http://localhost:3000",
+        "http://localhost:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -54,6 +61,11 @@ class TransformToDomoRequest(BaseModel):
 
 def assume_role(region: str, role_arn: str):
     """Assume AWS role and return temporary credentials"""
+    
+    # IMPORTANT: Use user-provided role to assume, not hardcoded credentials
+    # The backend should NOT have its own AWS credentials
+    # Instead, it assumes roles provided by users
+    
     sts = boto3.client("sts", region_name=region)
     
     response = sts.assume_role(
@@ -73,9 +85,10 @@ def assume_role(region: str, role_arn: str):
 def root():
     return {
         "service": "QuickSight to Domo Migration API",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "status": "running",
-        "authentication": "AWS credentials only (Domo handled by frontend)"
+        "cors": "Fixed - specific origins only",
+        "authentication": "User-provided AWS credentials (no backend creds needed)"
     }
 
 @app.get("/health")
@@ -86,8 +99,18 @@ def health_check():
 
 @app.post("/api/aws/validate")
 def validate_aws_credentials(payload: AWSCredentials):
-    """Validate AWS credentials by attempting to assume role"""
+    """
+    Validate AWS credentials by attempting to assume role
+    
+    IMPORTANT: This endpoint assumes the user-provided role.
+    No backend AWS credentials needed!
+    """
     try:
+        # This will fail if:
+        # 1. Role ARN is invalid
+        # 2. Role doesn't exist
+        # 3. Role's trust policy doesn't allow assumption
+        
         creds = assume_role(payload.region, payload.role_arn)
         
         return {
@@ -97,11 +120,22 @@ def validate_aws_credentials(payload: AWSCredentials):
         }
     
     except ClientError as e:
+        error_msg = e.response["Error"]["Message"]
+        
         raise HTTPException(
             status_code=400,
             detail={
                 "error": "AWS credential validation failed",
-                "message": e.response["Error"]["Message"]
+                "message": error_msg,
+                "suggestion": "Check that the IAM role exists and has the correct trust policy"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Unexpected error during AWS validation",
+                "message": str(e)
             }
         )
 
@@ -196,27 +230,20 @@ def extract_dashboard(payload: ExtractDashboardRequest):
 
 @app.post("/api/transform/qs-to-unified")
 def convert_qs_to_unified_schema(payload: ConvertToUnifiedRequest):
-    """
-    Convert QuickSight definition to UnifiedBISchema
-    Uses YOUR run_qs_to_unified.py code
-    """
+    """Convert QuickSight definition to UnifiedBISchema"""
     try:
         qs_definition = payload.qs_definition
         
-        # Import your existing conversion function
         from run_qs_to_unified import transform_qs_dashboard_to_unified
         
         print(f"📊 Converting dashboard: {payload.dashboard_id}")
         
-        # Use your existing logic
         unified_schema = transform_qs_dashboard_to_unified(qs_definition)
         
         print(f"✅ Conversion complete!")
         print(f"   - Pages: {len(unified_schema.get('pages', []))}")
         print(f"   - Datasets: {len(unified_schema.get('datasets', []))}")
-        print(f"   - Calculated Fields: {len(unified_schema.get('calculatedFields', []))}")
         
-        # Count total visuals
         total_visuals = sum(
             len(page.get('visuals', [])) 
             for page in unified_schema.get('pages', [])
@@ -251,31 +278,19 @@ def convert_qs_to_unified_schema(payload: ConvertToUnifiedRequest):
 
 @app.post("/api/transform/unified-to-domo")
 def transform_unified_to_domo(payload: TransformToDomoRequest):
-    """
-    Transform UnifiedBISchema to Domo card payloads
-    Uses YOUR domo_adapter.py code (payload generation only)
-    
-    IMPORTANT: This only generates payloads - frontend creates actual cards!
-    """
+    """Transform UnifiedBISchema to Domo card payloads"""
     try:
         unified_schema = payload.unified_schema
         dataset_mapping = payload.dataset_mapping
         
         print(f"🔧 Generating Domo card payloads...")
-        print(f"   Dataset mapping: {dataset_mapping}")
         
-        # Import your existing modules
         from domo_adapter import DomoAdapter
         from dataset_resolver import StaticDatasetResolver
         
-        # Create resolver with user's dataset mapping
         resolver = StaticDatasetResolver(dataset_mapping)
-        
-        # Create adapter WITHOUT domo_client (we're only generating payloads)
-        # Pass None as client since we won't be making API calls
         adapter = DomoAdapter(None, resolver, column_mapping={})
         
-        # Generate payloads for each visual
         card_payloads = []
         errors = []
         
@@ -287,7 +302,6 @@ def transform_unified_to_domo(payload: TransformToDomoRequest):
                     
                     print(f"   Processing: {visual_id} ({visual_type})")
                     
-                    # Use your adapter's payload building methods
                     if visual_type == "KPI":
                         payload = adapter._build_kpi_payload(visual)
                     elif visual_type == "BAR":
@@ -364,13 +378,9 @@ def transform_unified_to_domo(payload: TransformToDomoRequest):
 
 @app.post("/api/datasets/analyze")
 def analyze_datasets(payload: Dict[str, Any]):
-    """
-    Analyze unified schema to identify required datasets
-    Helps user understand what datasets need to be mapped
-    """
+    """Analyze unified schema to identify required datasets"""
     try:
         unified_schema = payload.get("unified_schema", {})
-        
         datasets = unified_schema.get("datasets", [])
         
         dataset_info = []
@@ -403,19 +413,12 @@ if __name__ == "__main__":
     import uvicorn
     
     print("=" * 60)
-    print("QuickSight to Domo Migration API v2.0")
+    print("QuickSight to Domo Migration API v2.1")
     print("=" * 60)
-    print("✅ Integrated with your existing code:")
-    print("   - run_qs_to_unified.py")
-    print("   - domo_adapter.py")
-    print("   - dataset_resolver.py")
-    print("=" * 60)
-    print("🔐 Authentication:")
-    print("   Backend: AWS credentials only")
-    print("   Domo: Handled by frontend (ryuu.js)")
+    print("✅ CORS: Fixed for Domo domains")
+    print("✅ AWS: Uses user-provided credentials")
     print("=" * 60)
     
-    # Get port from environment (for Heroku/cloud) or use 8000
     port = int(os.environ.get("PORT", 8000))
     
     print(f"🚀 Starting server on http://0.0.0.0:{port}")
