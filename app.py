@@ -59,25 +59,23 @@ class TransformToDomoRequest(BaseModel):
 
 # ==================== AWS HELPER ====================
 
-def assume_role(region: str, role_arn: str):
-    """Assume AWS role and return temporary credentials"""
-    
-    # IMPORTANT: Use user-provided role to assume, not hardcoded credentials
-    # The backend should NOT have its own AWS credentials
-    # Instead, it assumes roles provided by users
-    
+def assume_role(role_arn: str, region: str):
     sts = boto3.client("sts", region_name=region)
-    
-    response = sts.assume_role(
+
+    assumed = sts.assume_role(
         RoleArn=role_arn,
-        RoleSessionName="QuickSightToDomoSession"
+        RoleSessionName="domo-quicksight-session"
     )
-    
-    return {
-        "aws_access_key_id": response["Credentials"]["AccessKeyId"],
-        "aws_secret_access_key": response["Credentials"]["SecretAccessKey"],
-        "aws_session_token": response["Credentials"]["SessionToken"],
-    }
+
+    creds = assumed["Credentials"]
+
+    return boto3.client(
+        "quicksight",
+        aws_access_key_id=creds["AccessKeyId"],
+        aws_secret_access_key=creds["SecretAccessKey"],
+        aws_session_token=creds["SessionToken"],
+        region_name=region
+    )
 
 # ==================== ENDPOINTS ====================
 
@@ -98,46 +96,24 @@ def health_check():
 # ==================== AWS & QUICKSIGHT ====================
 
 @app.post("/api/aws/validate")
-def validate_aws_credentials(payload: AWSCredentials):
-    """
-    Validate AWS credentials by attempting to assume role
-    
-    IMPORTANT: This endpoint assumes the user-provided role.
-    No backend AWS credentials needed!
-    """
+def validate_aws(payload: dict):
     try:
-        # This will fail if:
-        # 1. Role ARN is invalid
-        # 2. Role doesn't exist
-        # 3. Role's trust policy doesn't allow assumption
-        
-        creds = assume_role(payload.region, payload.role_arn)
-        
-        return {
-            "status": "valid",
-            "message": "AWS credentials validated successfully",
-            "aws_account_id": payload.aws_account_id
-        }
-    
-    except ClientError as e:
-        error_msg = e.response["Error"]["Message"]
-        
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "AWS credential validation failed",
-                "message": error_msg,
-                "suggestion": "Check that the IAM role exists and has the correct trust policy"
-            }
+        role_arn = payload["role_arn"]
+        region = payload.get("region", "ap-south-1")
+        account_id = payload["aws_account_id"]
+
+        qs = assume_role(role_arn, region)
+
+        qs.list_dashboards(
+            AwsAccountId=account_id,
+            MaxResults=1
         )
+
+        return {"status": "success", "message": "AWS credentials valid"}
+
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "Unexpected error during AWS validation",
-                "message": str(e)
-            }
-        )
+        raise HTTPException(status_code=500, detail=str(e))
+        
 
 @app.post("/api/quicksight/list-dashboards")
 def list_quicksight_dashboards(payload: ListDashboardsRequest):
