@@ -17,15 +17,13 @@ app = FastAPI(title="QuickSight to Domo Migration API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://a731a307-0c2f-405a-81c9-7ca66b449380.domoapps.prod5.domo.com",
-        "https://gwcteq-partner.domo.com",
         "http://localhost:3000",
         "http://localhost:5173",
     ],
+    allow_origin_regex=r"https://.*\.domoapps\.prod.*\.domo\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
 )
 
 # ==================== MODELS ====================
@@ -712,5 +710,5 @@ if __name__ == "__main__":
     import uvicorn
 
     port = int(os.environ.get("PORT", 8000))
-    
+
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
