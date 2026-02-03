@@ -1,5 +1,7 @@
 """
-QuickSight to Domo Migration API - WITH DATASET SUPPORT
+QuickSight to Domo Migration API - COMPLETE & WORKING
+✅ Uses working run_qs_to_unified.py conversion logic
+✅ Enhanced debugging for unified schema conversion
 """
 
 from fastapi import FastAPI, HTTPException
@@ -10,6 +12,9 @@ from botocore.exceptions import ClientError
 import json
 import os
 from typing import Dict, Any, List, Optional
+
+# ✅ IMPORT THE WORKING CONVERSION FUNCTION
+from run_qs_to_unified import transform_qs_dashboard_to_unified
 
 app = FastAPI(title="QuickSight to Domo Migration API")
 
@@ -60,17 +65,17 @@ class TransformToDomoRequest(BaseModel):
 class AnalyzeDatasetsRequest(BaseModel):
     unified_schema: Dict[str, Any]
 
-# ==================== AWS HELPER - FIXED ====================
+# ==================== AWS HELPER ====================
 
 def get_quicksight_client(role_arn: str, region: str):
     """
-    FIXED: Returns a properly authenticated QuickSight client
+    Returns a properly authenticated QuickSight client
     """
     try:
-        # Step 1: Create STS client with base credentials from environment
+        # Create STS client
         sts = boto3.client("sts", region_name=region)
         
-        # Step 2: Assume the user-provided role
+        # Assume the role
         print(f"🔑 Assuming role: {role_arn}")
         assumed = sts.assume_role(
             RoleArn=role_arn,
@@ -78,11 +83,11 @@ def get_quicksight_client(role_arn: str, region: str):
             DurationSeconds=3600
         )
         
-        # Step 3: Extract temporary credentials
+        # Extract credentials
         creds = assumed["Credentials"]
         print(f"✅ Role assumed successfully")
         
-        # Step 4: Return QuickSight client with temporary credentials
+        # Return QuickSight client with temporary credentials
         return boto3.client(
             "quicksight",
             aws_access_key_id=creds["AccessKeyId"],
@@ -97,181 +102,54 @@ def get_quicksight_client(role_arn: str, region: str):
         print(f"❌ Failed to assume role: {error_code} - {error_msg}")
         raise Exception(f"AWS Error ({error_code}): {error_msg}")
 
-# ==================== DATASET EXTRACTION HELPERS ====================
-
-def extract_datasets_from_definition(dashboard_def: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    Extract dataset information from QuickSight dashboard definition
-    """
-    datasets = []
-    dataset_refs = set()
-    
-    # Try to get datasets from DataSetIdentifierDeclarations
-    data_set_declarations = dashboard_def.get("DataSetIdentifierDeclarations", [])
-    
-    print(f"📊 Found {len(data_set_declarations)} dataset declarations")
-    
-    for decl in data_set_declarations:
-        dataset_ref = decl.get("Identifier", "")
-        dataset_arn = decl.get("DataSetArn", "")
-        
-        if dataset_ref and dataset_ref not in dataset_refs:
-            dataset_refs.add(dataset_ref)
-            
-            # Extract dataset ID from ARN
-            dataset_id = dataset_arn.split("/")[-1] if dataset_arn else dataset_ref
-            
-            datasets.append({
-                "id": dataset_id,
-                "ref": dataset_ref,
-                "name": dataset_ref.replace("_", " ").title(),
-                "arn": dataset_arn,
-                "columns": [],  # Will be populated if we fetch details
-                "calculatedFields": []
-            })
-    
-    # Also check in sheets for any additional dataset references
-    sheets = dashboard_def.get("Sheets", [])
-    for sheet in sheets:
-        # Check visuals for dataset references
-        visuals = sheet.get("Visuals", [])
-        for visual in visuals:
-            # Look for ChartConfiguration which contains dataset references
-            chart_config = visual.get("ChartConfiguration", {})
-            field_wells = chart_config.get("FieldWells", {})
-            
-            # Extract any dataset identifiers from field wells
-            if isinstance(field_wells, dict):
-                for key, value in field_wells.items():
-                    if isinstance(value, dict):
-                        for field_list in value.values():
-                            if isinstance(field_list, list):
-                                for field in field_list:
-                                    if isinstance(field, dict) and "DataSetIdentifier" in field:
-                                        dataset_ref = field["DataSetIdentifier"]
-                                        if dataset_ref not in dataset_refs:
-                                            dataset_refs.add(dataset_ref)
-                                            datasets.append({
-                                                "id": dataset_ref,
-                                                "ref": dataset_ref,
-                                                "name": dataset_ref.replace("_", " ").title(),
-                                                "columns": [],
-                                                "calculatedFields": []
-                                            })
-    
-    print(f"✅ Extracted {len(datasets)} unique dataset(s)")
-    return datasets
-
-def get_dataset_details(qs_client, aws_account_id: str, dataset_id: str) -> Optional[Dict[str, Any]]:
-    """
-    Fetch detailed information about a specific dataset
-    """
-    try:
-        print(f"📥 Fetching details for dataset: {dataset_id}")
-        
-        response = qs_client.describe_data_set(
-            AwsAccountId=aws_account_id,
-            DataSetId=dataset_id
-        )
-        
-        dataset_info = response.get("DataSet", {})
-        
-        # Extract column information
-        physical_table_map = dataset_info.get("PhysicalTableMap", {})
-        logical_table_map = dataset_info.get("LogicalTableMap", {})
-        
-        columns = []
-        calculated_fields = []
-        
-        # Get columns from logical table map
-        for table_name, table_def in logical_table_map.items():
-            source = table_def.get("Source", {})
-            
-            # Get physical table ID
-            physical_table_id = source.get("PhysicalTableId", "")
-            
-            # Get columns from physical table
-            if physical_table_id in physical_table_map:
-                physical_table = physical_table_map[physical_table_id]
-                
-                # Handle different table types
-                if "RelationalTable" in physical_table:
-                    input_columns = physical_table["RelationalTable"].get("InputColumns", [])
-                    columns.extend([col.get("Name", "") for col in input_columns])
-                elif "S3Source" in physical_table:
-                    input_columns = physical_table["S3Source"].get("InputColumns", [])
-                    columns.extend([col.get("Name", "") for col in input_columns])
-                elif "CustomSql" in physical_table:
-                    input_columns = physical_table["CustomSql"].get("InputColumns", [])
-                    columns.extend([col.get("Name", "") for col in input_columns])
-            
-            # Get calculated fields
-            data_transforms = table_def.get("DataTransforms", [])
-            for transform in data_transforms:
-                if "CreateColumnsOperation" in transform:
-                    calc_fields = transform["CreateColumnsOperation"].get("Columns", [])
-                    for field in calc_fields:
-                        field_name = field.get("ColumnName", "")
-                        if field_name:
-                            calculated_fields.append(field_name)
-                            columns.append(f"{field_name} (calculated)")
-        
-        print(f"✅ Found {len(columns)} columns, {len(calculated_fields)} calculated fields")
-        
-        return {
-            "id": dataset_id,
-            "name": dataset_info.get("Name", dataset_id),
-            "columns": columns,
-            "calculatedFields": calculated_fields,
-            "importMode": dataset_info.get("ImportMode", "UNKNOWN")
-        }
-    
-    except ClientError as e:
-        error_msg = e.response["Error"]["Message"]
-        print(f"⚠️ Could not fetch dataset details for {dataset_id}: {error_msg}")
-        return None
-    except Exception as e:
-        print(f"⚠️ Unexpected error fetching dataset {dataset_id}: {str(e)}")
-        return None
-
 # ==================== ENDPOINTS ====================
 
 @app.get("/")
 def root():
     return {
         "service": "QuickSight to Domo Migration API",
-        "version": "2.4.0",
+        "version": "3.1.0",
         "status": "running",
         "features": [
             "AWS credential validation",
             "Dashboard listing",
-            "Dataset listing",
+            "Dataset listing with details",
             "Dashboard extraction",
-            "Dataset discovery",
-            "Unified schema conversion"
+            "✅ Working unified schema conversion (uses run_qs_to_unified.py)",
+            "Dataset mapping support",
+            "Domo transformation"
         ]
     }
 
 @app.get("/health")
 def health_check():
-    """Health check with AWS credential verification"""
+    """Health check"""
     return {
         "status": "healthy",
         "aws_credentials_configured": bool(
             os.environ.get("AWS_ACCESS_KEY_ID") and 
             os.environ.get("AWS_SECRET_ACCESS_KEY")
-        )
+        ),
+        "conversion_module_loaded": "transform_qs_dashboard_to_unified" in dir()
     }
 
-# ==================== AWS & QUICKSIGHT ====================
+# ==================== AWS VALIDATION ====================
 
 @app.post("/api/aws/validate")
 def validate_aws(payload: dict):
     """Validate AWS credentials by attempting to assume role"""
     try:
+        print(f"\n{'='*60}")
+        print(f"🔑 VALIDATING AWS CREDENTIALS")
+        print(f"{'='*60}")
+        
         role_arn = payload["role_arn"]
         region = payload.get("region", "us-east-1")
         account_id = payload["aws_account_id"]
+
+        print(f"Account ID: {account_id}")
+        print(f"Region: {region}")
+        print(f"Role ARN: {role_arn}")
 
         # Get QuickSight client (this will fail if role can't be assumed)
         qs = get_quicksight_client(role_arn, region)
@@ -283,6 +161,9 @@ def validate_aws(payload: dict):
         )
         
         dashboard_count = len(response.get("DashboardSummaryList", []))
+        
+        print(f"✅ AWS credentials validated successfully")
+        print(f"{'='*60}\n")
 
         return {
             "status": "success",
@@ -293,6 +174,7 @@ def validate_aws(payload: dict):
     except Exception as e:
         error_msg = str(e)
         print(f"❌ Validation failed: {error_msg}")
+        print(f"{'='*60}\n")
         raise HTTPException(
             status_code=400,
             detail={
@@ -301,160 +183,191 @@ def validate_aws(payload: dict):
             }
         )
 
+# ==================== QUICKSIGHT DASHBOARDS ====================
+
 @app.post("/api/quicksight/list-dashboards")
 def list_quicksight_dashboards(payload: ListDashboardsRequest):
     """List all QuickSight dashboards"""
     try:
-        # Get QuickSight client with assumed role credentials
+        print(f"\n{'='*60}")
+        print(f"📊 LISTING QUICKSIGHT DASHBOARDS")
+        print(f"{'='*60}")
+        
         qs = get_quicksight_client(payload.role_arn, payload.region)
         
-        # List dashboards
-        print(f"📊 Listing dashboards for account: {payload.aws_account_id}")
-        response = qs.list_dashboards(
-            AwsAccountId=payload.aws_account_id
-        )
+        response = qs.list_dashboards(AwsAccountId=payload.aws_account_id)
         
-        dashboards = response.get("DashboardSummaryList", [])
+        dashboards = []
+        for summary in response.get("DashboardSummaryList", []):
+            dashboards.append({
+                "id": summary["DashboardId"],
+                "arn": summary["Arn"],
+                "name": summary["Name"],
+                "created_time": str(summary.get("CreatedTime", "")),
+                "last_updated": str(summary.get("LastUpdatedTime", ""))
+            })
+        
         print(f"✅ Found {len(dashboards)} dashboard(s)")
+        for db in dashboards:
+            print(f"   - {db['name']} (ID: {db['id']})")
+        print(f"{'='*60}\n")
         
         return {
             "count": len(dashboards),
-            "dashboards": [
-                {
-                    "id": d.get("DashboardId"),
-                    "arn": d.get("Arn"),
-                    "name": d.get("Name"),
-                    "created_time": str(d.get("CreatedTime", "")),
-                    "last_updated": str(d.get("LastUpdatedTime", ""))
-                }
-                for d in dashboards
-            ]
+            "dashboards": dashboards
         }
     
-    except ClientError as e:
-        error_msg = e.response["Error"]["Message"]
-        print(f"❌ Failed to list dashboards: {error_msg}")
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "Failed to list QuickSight dashboards",
-                "message": error_msg
-            }
-        )
     except Exception as e:
         error_msg = str(e)
-        print(f"❌ Unexpected error: {error_msg}")
+        print(f"❌ List dashboards failed: {error_msg}")
+        print(f"{'='*60}\n")
         raise HTTPException(
             status_code=500,
             detail={
-                "error": "Internal server error",
+                "error": "Failed to list dashboards",
                 "message": error_msg
             }
         )
 
+# ==================== QUICKSIGHT DATASETS ====================
+
 @app.post("/api/quicksight/list-datasets")
 def list_quicksight_datasets(payload: ListDataSetsRequest):
-    """
-    NEW ENDPOINT: List all QuickSight datasets
-    """
+    """List all QuickSight datasets in the account"""
     try:
-        # Get QuickSight client with assumed role credentials
+        print(f"\n{'='*60}")
+        print(f"📊 LISTING QUICKSIGHT DATASETS")
+        print(f"{'='*60}")
+        
         qs = get_quicksight_client(payload.role_arn, payload.region)
         
         # List datasets
-        print(f"📊 Listing datasets for account: {payload.aws_account_id}")
-        response = qs.list_data_sets(
-            AwsAccountId=payload.aws_account_id
-        )
+        response = qs.list_data_sets(AwsAccountId=payload.aws_account_id)
         
-        datasets = response.get("DataSetSummaries", [])
-        print(f"✅ Found {len(datasets)} dataset(s)")
-        
-        # Get detailed info for each dataset (up to first 10)
-        detailed_datasets = []
-        for ds_summary in datasets[:10]:  # Limit to avoid long processing
-            dataset_id = ds_summary.get("DataSetId")
-            dataset_name = ds_summary.get("Name")
+        datasets = []
+        for summary in response.get("DataSetSummaries", []):
+            dataset_id = summary["DataSetId"]
             
-            # Try to get details
-            details = get_dataset_details(qs, payload.aws_account_id, dataset_id)
-            
-            if details:
-                detailed_datasets.append({
+            # Get detailed dataset info
+            try:
+                dataset_detail = qs.describe_data_set(
+                    AwsAccountId=payload.aws_account_id,
+                    DataSetId=dataset_id
+                )
+                
+                dataset_info = dataset_detail.get("DataSet", {})
+                
+                # Extract columns
+                columns = []
+                physical_table_map = dataset_info.get("PhysicalTableMap", {})
+                logical_table_map = dataset_info.get("LogicalTableMap", {})
+                
+                # Get columns from physical tables
+                for table_key, table_val in physical_table_map.items():
+                    if "RelationalTable" in table_val:
+                        rel_table = table_val["RelationalTable"]
+                        columns.extend([col.get("Name", "") for col in rel_table.get("InputColumns", [])])
+                    elif "S3Source" in table_val:
+                        s3_source = table_val["S3Source"]
+                        columns.extend([col.get("Name", "") for col in s3_source.get("InputColumns", [])])
+                    elif "CustomSql" in table_val:
+                        custom_sql = table_val["CustomSql"]
+                        columns.extend([col.get("Name", "") for col in custom_sql.get("InputColumns", [])])
+                
+                # Extract calculated fields
+                calculated_fields = []
+                for calc_field in dataset_info.get("CalculatedFields", []):
+                    calculated_fields.append(calc_field.get("Name", ""))
+                
+                # Also check logical table for additional calculated fields
+                for table_key, table_val in logical_table_map.items():
+                    data_transforms = table_val.get("DataTransforms", [])
+                    for transform in data_transforms:
+                        if "CreateColumnsOperation" in transform:
+                            calc_cols = transform["CreateColumnsOperation"].get("Columns", [])
+                            for col in calc_cols:
+                                col_name = col.get("ColumnName", "")
+                                if col_name and col_name not in calculated_fields:
+                                    calculated_fields.append(col_name)
+                
+                datasets.append({
                     "id": dataset_id,
-                    "name": dataset_name,
-                    "arn": ds_summary.get("Arn", ""),
-                    "created_time": str(ds_summary.get("CreatedTime", "")),
-                    "last_updated": str(ds_summary.get("LastUpdatedTime", "")),
-                    "import_mode": details.get("importMode", "UNKNOWN"),
-                    "columns": details.get("columns", []),
-                    "calculated_fields": details.get("calculatedFields", []),
-                    "column_count": len(details.get("columns", [])),
-                    "calculated_field_count": len(details.get("calculatedFields", []))
+                    "name": summary["Name"],
+                    "arn": summary["Arn"],
+                    "created_time": str(summary.get("CreatedTime", "")),
+                    "last_updated": str(summary.get("LastUpdatedTime", "")),
+                    "import_mode": summary.get("ImportMode", "UNKNOWN"),
+                    "columns": columns,
+                    "calculated_fields": calculated_fields,
+                    "column_count": len(columns),
+                    "calculated_field_count": len(calculated_fields)
                 })
-            else:
-                # Add basic info if details fetch failed
-                detailed_datasets.append({
+                
+                print(f"   - {summary['Name']}: {len(columns)} columns, {len(calculated_fields)} calc fields")
+            
+            except Exception as detail_error:
+                print(f"⚠️ Could not get details for dataset {dataset_id}: {detail_error}")
+                # Add basic info even if details fail
+                datasets.append({
                     "id": dataset_id,
-                    "name": dataset_name,
-                    "arn": ds_summary.get("Arn", ""),
-                    "created_time": str(ds_summary.get("CreatedTime", "")),
-                    "last_updated": str(ds_summary.get("LastUpdatedTime", "")),
-                    "import_mode": "UNKNOWN",
+                    "name": summary["Name"],
+                    "arn": summary["Arn"],
+                    "created_time": str(summary.get("CreatedTime", "")),
+                    "last_updated": str(summary.get("LastUpdatedTime", "")),
+                    "import_mode": summary.get("ImportMode", "UNKNOWN"),
                     "columns": [],
                     "calculated_fields": [],
                     "column_count": 0,
                     "calculated_field_count": 0
                 })
         
+        print(f"✅ Found {len(datasets)} dataset(s)")
+        print(f"{'='*60}\n")
+        
         return {
             "count": len(datasets),
-            "datasets": detailed_datasets
+            "datasets": datasets
         }
     
-    except ClientError as e:
-        error_msg = e.response["Error"]["Message"]
-        print(f"❌ Failed to list datasets: {error_msg}")
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "Failed to list QuickSight datasets",
-                "message": error_msg
-            }
-        )
     except Exception as e:
         error_msg = str(e)
-        print(f"❌ Unexpected error: {error_msg}")
+        print(f"❌ List datasets failed: {error_msg}")
+        print(f"{'='*60}\n")
         raise HTTPException(
             status_code=500,
             detail={
-                "error": "Internal server error",
+                "error": "Failed to list datasets",
                 "message": error_msg
             }
         )
+
+# ==================== DASHBOARD EXTRACTION ====================
 
 @app.post("/api/quicksight/extract-dashboard")
 def extract_dashboard(payload: ExtractDashboardRequest):
     """Extract QuickSight dashboard definition"""
     try:
-        # Get QuickSight client with assumed role credentials
+        print(f"\n{'='*60}")
+        print(f"📥 EXTRACTING DASHBOARD")
+        print(f"{'='*60}")
+        print(f"Dashboard ID: {payload.dashboard_id}")
+        
         qs = get_quicksight_client(payload.role_arn, payload.region)
         
-        # Extract dashboard definition
-        print(f"📥 Extracting dashboard: {payload.dashboard_id}")
         response = qs.describe_dashboard_definition(
             AwsAccountId=payload.aws_account_id,
             DashboardId=payload.dashboard_id
         )
         
-        # Save for debugging
+        # Save to file for debugging
         os.makedirs("extracted_dashboards", exist_ok=True)
         file_path = f"extracted_dashboards/{payload.dashboard_id}.qs.json"
-        
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(response, f, indent=2, default=str)
         
-        print(f"✅ Dashboard extracted and saved to: {file_path}")
+        print(f"✅ Dashboard extracted successfully")
+        print(f"💾 Saved to: {file_path}")
+        print(f"{'='*60}\n")
         
         return {
             "status": "success",
@@ -463,131 +376,168 @@ def extract_dashboard(payload: ExtractDashboardRequest):
             "saved_to": file_path
         }
     
-    except ClientError as e:
-        error_msg = e.response["Error"]["Message"]
-        print(f"❌ Failed to extract dashboard: {error_msg}")
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ Extract dashboard failed: {error_msg}")
+        print(f"{'='*60}\n")
         raise HTTPException(
-            status_code=400,
+            status_code=500,
             detail={
                 "error": "Failed to extract dashboard",
                 "message": error_msg
             }
         )
-    except Exception as e:
-        error_msg = str(e)
-        print(f"❌ Unexpected error: {error_msg}")
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "Internal server error",
-                "message": error_msg
-            }
-        )
 
-# ==================== TRANSFORMATION ====================
+# ==================== UNIFIED SCHEMA CONVERSION (FIXED WITH DEBUGGING!) ====================
 
 @app.post("/api/transform/qs-to-unified")
 def convert_to_unified_schema(payload: ConvertToUnifiedRequest):
     """
-    Convert QuickSight definition to Unified Schema
-    WITH DATASET EXTRACTION
+    Convert QuickSight dashboard definition to unified schema
+    
+    ✅ FIXED: Properly extracts the Definition from the response
     """
     try:
-        print(f"🔄 Converting dashboard {payload.dashboard_id} to unified schema")
+        print(f"\n{'='*60}")
+        print(f"🔄 CONVERTING TO UNIFIED SCHEMA")
+        print(f"{'='*60}")
+        print(f"Dashboard ID: {payload.dashboard_id}")
         
-        qs_def = payload.qs_definition
+        # 🐛 DEBUG: Check what we received
+        print(f"\n🐛 DEBUG: Input structure analysis")
+        print(f"   Type: {type(payload.qs_definition)}")
+        print(f"   Keys: {list(payload.qs_definition.keys())}")
         
-        # Extract datasets from the definition
-        datasets = extract_datasets_from_definition(qs_def)
+        # ✅ CRITICAL FIX: Extract the actual QuickSight response
+        # The frontend sends: { status, dashboard_id, definition }
+        # But we need the AWS QuickSight response which is IN the 'definition' key
         
-        # Build unified schema
-        unified = {
-            "dashboardId": payload.dashboard_id,
-            "dashboardName": qs_def.get("Name", payload.dashboard_id),
-            "datasets": datasets,
-            "pages": [],
-            "filters": [],
-            "calculatedFields": []
-        }
+        if 'definition' in payload.qs_definition:
+            # Frontend sent wrapped response
+            print(f"   📦 Unwrapping: Found 'definition' key")
+            qs_response = payload.qs_definition['definition']
+        elif 'Definition' in payload.qs_definition:
+            # Already the correct format
+            print(f"   ✅ Direct: Already has 'Definition' key")
+            qs_response = payload.qs_definition
+        else:
+            # Assume it's the direct response
+            print(f"   ⚠️  Warning: No definition/Definition key found")
+            qs_response = payload.qs_definition
         
-        # Extract sheets/pages
-        sheets = qs_def.get("Sheets", [])
-        for sheet in sheets:
-            page = {
-                "pageId": sheet.get("SheetId", ""),
-                "pageName": sheet.get("Name", "Untitled"),
-                "visuals": []
-            }
+        # Now check the structure
+        print(f"\n📊 QuickSight response structure:")
+        print(f"   Type: {type(qs_response)}")
+        print(f"   Keys: {list(qs_response.keys())[:10]}")
+        print(f"   Has 'DashboardId': {'DashboardId' in qs_response}")
+        print(f"   Has 'Name': {'Name' in qs_response}")
+        print(f"   Has 'Definition': {'Definition' in qs_response}")
+        
+        if 'Definition' in qs_response:
+            definition = qs_response['Definition']
+            print(f"\n📋 Definition structure:")
+            print(f"   Type: {type(definition)}")
+            print(f"   Keys: {list(definition.keys())[:10]}")
+            print(f"   Has 'Sheets': {'Sheets' in definition}")
+            print(f"   Has 'DataSetIdentifierDeclarations': {'DataSetIdentifierDeclarations' in definition}")
             
-            # Extract visuals
-            visuals = sheet.get("Visuals", [])
-            for visual in visuals:
-                visual_obj = {
-                    "visualId": visual.get("VisualId", ""),
-                    "visualType": list(visual.keys())[0] if visual else "Unknown",
-                    "title": visual.get("Title", {}).get("FormatText", {}).get("PlainText", ""),
-                    "datasetRef": ""  # Will be populated from visual data
-                }
-                
-                # Try to extract dataset reference
-                chart_config = visual.get("ChartConfiguration", {})
-                field_wells = chart_config.get("FieldWells", {})
-                
-                # Look for DataSetIdentifier in any field
-                if isinstance(field_wells, dict):
-                    for category_fields in field_wells.values():
-                        if isinstance(category_fields, dict):
-                            for field_list in category_fields.values():
-                                if isinstance(field_list, list) and len(field_list) > 0:
-                                    first_field = field_list[0]
-                                    if isinstance(first_field, dict) and "DataSetIdentifier" in first_field:
-                                        visual_obj["datasetRef"] = first_field["DataSetIdentifier"]
-                                        break
-                
-                page["visuals"].append(visual_obj)
+            if 'Sheets' in definition:
+                sheets = definition['Sheets']
+                print(f"   Sheets count: {len(sheets)}")
+                if sheets:
+                    print(f"   First sheet has visuals: {'Visuals' in sheets[0]}")
+                    if 'Visuals' in sheets[0]:
+                        print(f"   Visual count: {len(sheets[0]['Visuals'])}")
             
-            unified["pages"].append(page)
+            if 'DataSetIdentifierDeclarations' in definition:
+                datasets = definition['DataSetIdentifierDeclarations']
+                print(f"   Dataset declarations: {len(datasets)}")
+                for ds in datasets:
+                    print(f"      - {ds.get('Identifier')} (ARN: {ds.get('DataSetArn', 'N/A')[:50]}...)")
         
-        # Save unified schema
+        # ✅ Call the conversion function with the CORRECT format
+        print(f"\n🔄 Calling transform_qs_dashboard_to_unified()...")
+        unified_schema = transform_qs_dashboard_to_unified(qs_response)
+        
+        print(f"\n{'='*60}")
+        print(f"✅ CONVERSION COMPLETE")
+        print(f"{'='*60}")
+        print(f"Schema Version: {unified_schema.get('schemaVersion', 'Unknown')}")
+        print(f"Dashboard ID: {unified_schema.get('source', {}).get('dashboardId')}")
+        print(f"Dashboard Name: {unified_schema.get('source', {}).get('dashboardName')}")
+        print(f"Datasets: {len(unified_schema.get('datasets', []))}")
+        print(f"Pages: {len(unified_schema.get('pages', []))}")
+        
+        total_visuals = sum(len(page.get('visuals', [])) for page in unified_schema.get('pages', []))
+        print(f"Total Visuals: {total_visuals}")
+        print(f"Calculated Fields: {len(unified_schema.get('calculatedFields', []))}")
+        
+        # Show dataset details
+        if unified_schema.get('datasets'):
+            print(f"\n📊 Dataset Details:")
+            for ds in unified_schema['datasets']:
+                print(f"   - {ds.get('name', 'Unknown')} (ID: {ds.get('id', 'Unknown')})")
+                if 'sourceArn' in ds:
+                    print(f"     ARN: {ds['sourceArn'][:60]}...")
+        else:
+            print(f"\n⚠️  WARNING: No datasets found!")
+        
+        # Show visual count by type
+        visual_types = {}
+        for page in unified_schema.get('pages', []):
+            for visual in page.get('visuals', []):
+                vtype = visual.get('type', 'Unknown')
+                visual_types[vtype] = visual_types.get(vtype, 0) + 1
+        
+        if visual_types:
+            print(f"\n📈 Visual Types:")
+            for vtype, count in visual_types.items():
+                print(f"   - {vtype}: {count}")
+        else:
+            print(f"\n⚠️  WARNING: No visuals found!")
+        
+        print(f"{'='*60}\n")
+        
+        # Save to file for debugging
         os.makedirs("unified_schemas", exist_ok=True)
-        file_path = f"unified_schemas/{payload.dashboard_id}.unified.json"
-        
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(unified, f, indent=2)
-        
-        print(f"✅ Unified schema created:")
-        print(f"   - Pages: {len(unified['pages'])}")
-        print(f"   - Datasets: {len(unified['datasets'])}")
-        print(f"   - Total visuals: {sum(len(p['visuals']) for p in unified['pages'])}")
+        unified_file = f"unified_schemas/{payload.dashboard_id}.unified.json"
+        with open(unified_file, "w", encoding="utf-8") as f:
+            json.dump(unified_schema, f, indent=2)
+        print(f"💾 Saved unified schema to: {unified_file}")
         
         return {
             "status": "success",
-            "unified_schema": unified,
+            "unified_schema": unified_schema,
             "stats": {
-                "pages": len(unified["pages"]),
-                "datasets": len(unified["datasets"]),
-                "calculated_fields": len(unified["calculatedFields"]),
-                "total_visuals": sum(len(p["visuals"]) for p in unified["pages"])
+                "pages": len(unified_schema.get('pages', [])),
+                "datasets": len(unified_schema.get('datasets', [])),
+                "calculated_fields": len(unified_schema.get('calculatedFields', [])),
+                "total_visuals": total_visuals
             }
         }
     
     except Exception as e:
-        error_msg = str(e)
-        print(f"❌ Conversion failed: {error_msg}")
         import traceback
-        traceback.print_exc()
+        error_detail = traceback.format_exc()
+        print(f"\n❌ CONVERSION FAILED")
+        print(f"Error: {str(e)}")
+        print(f"Traceback:\n{error_detail}")
+        
         raise HTTPException(
             status_code=500,
             detail={
-                "error": "Conversion to unified schema failed",
-                "message": error_msg
+                "error": "Conversion failed",
+                "message": str(e),
+                "traceback": error_detail
             }
         )
+
+# ==================== DATASET ANALYSIS ====================
 
 @app.post("/api/datasets/analyze")
 def analyze_datasets(payload: AnalyzeDatasetsRequest):
     """
-    NEW ENDPOINT: Analyze datasets from unified schema
+    Analyze datasets from unified schema
     """
     try:
         print(f"🔍 Analyzing datasets from unified schema")
@@ -626,22 +576,32 @@ def analyze_datasets(payload: AnalyzeDatasetsRequest):
             }
         )
 
+# ==================== DOMO TRANSFORMATION ====================
+
 @app.post("/api/transform/unified-to-domo")
 def transform_to_domo(payload: TransformToDomoRequest):
     """
     Transform unified schema to Domo card payloads
     """
     try:
-        print(f"🔄 Transforming to Domo card payloads")
+        print(f"\n{'='*60}")
+        print(f"🔄 TRANSFORMING TO DOMO CARD PAYLOADS")
+        print(f"{'='*60}")
         
         unified = payload.unified_schema
         dataset_mapping = payload.dataset_mapping
+        
+        print(f"Dataset Mapping:")
+        for qs_ref, domo_id in dataset_mapping.items():
+            print(f"   {qs_ref} → {domo_id}")
         
         card_payloads = []
         errors = []
         
         # Iterate through pages and visuals
         for page in unified.get("pages", []):
+            print(f"\nProcessing page: {page.get('name', 'Untitled')}")
+            
             for visual in page.get("visuals", []):
                 try:
                     # Get dataset reference
@@ -652,36 +612,41 @@ def transform_to_domo(payload: TransformToDomoRequest):
                     
                     if not domo_dataset_id:
                         errors.append({
-                            "visual_id": visual.get("visualId"),
+                            "visual_id": visual.get("id"),
                             "error": f"No dataset mapping found for: {dataset_ref}"
                         })
+                        print(f"   ⚠️ Skipped {visual.get('type')}: No dataset mapping for {dataset_ref}")
                         continue
                     
                     # Create basic card payload
                     card_payload = {
-                        "visual_id": visual.get("visualId"),
-                        "visual_type": visual.get("visualType"),
+                        "visual_id": visual.get("id"),
+                        "visual_type": visual.get("type"),
                         "title": visual.get("title", "Untitled Visual"),
                         "dataset_id": domo_dataset_id,
                         "payload": {
                             "title": visual.get("title", "Untitled Visual"),
                             "dataSourceId": domo_dataset_id,
-                            "cardType": "doc_card",  # Default type
-                            "description": f"Migrated from QuickSight - {visual.get('visualType')}"
+                            "cardType": "doc_card",
+                            "description": f"Migrated from QuickSight - {visual.get('type')}"
                         }
                     }
                     
                     card_payloads.append(card_payload)
+                    print(f"   ✅ Created payload for {visual.get('type')}: {visual.get('title')}")
                 
                 except Exception as visual_error:
                     errors.append({
-                        "visual_id": visual.get("visualId"),
+                        "visual_id": visual.get("id"),
                         "error": str(visual_error)
                     })
+                    print(f"   ❌ Error: {visual_error}")
         
+        print(f"\n{'='*60}")
         print(f"✅ Created {len(card_payloads)} card payload(s)")
         if errors:
             print(f"⚠️ {len(errors)} error(s) occurred")
+        print(f"{'='*60}\n")
         
         return {
             "status": "success",
