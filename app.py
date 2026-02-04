@@ -102,6 +102,214 @@ def get_quicksight_client(role_arn: str, region: str):
         print(f"❌ Failed to assume role: {error_code} - {error_msg}")
         raise Exception(f"AWS Error ({error_code}): {error_msg}")
 
+# ==================== ENHANCED COLUMN EXTRACTION ====================
+
+def extract_columns_from_dataset(dataset_info: Dict[str, Any]) -> tuple:
+    """
+    ROBUST column extraction from QuickSight datasets.
+    
+    Returns: (columns_list, calculated_fields_list)
+    """
+    columns = []
+    calculated_fields = []
+    
+    dataset_name = dataset_info.get('Name', 'Unknown')
+    print(f"\n🔍 Extracting columns from: {dataset_name}")
+    
+    # ===================================================================
+    # METHOD 1: OutputColumns (MOST RELIABLE - ALWAYS CHECK THIS FIRST)
+    # ===================================================================
+    output_columns = dataset_info.get('OutputColumns', [])
+    if output_columns:
+        print(f"   ✅ OutputColumns found: {len(output_columns)} columns")
+        for col in output_columns:
+            col_name = col.get('Name')
+            col_type = col.get('Type', '')
+            col_description = col.get('Description', '')
+            
+            if not col_name:
+                continue
+                
+            # Check if it's a calculated field
+            # Calculated fields often have specific markers
+            is_calculated = (
+                'CALCULATED' in col_type.upper() or
+                col_description.startswith('Calculated') or
+                col.get('IsCalculatedField', False)
+            )
+            
+            if is_calculated:
+                calculated_fields.append(col_name)
+                print(f"      📊 Calculated: {col_name} ({col_type})")
+            else:
+                columns.append(col_name)
+                print(f"      ✓ Column: {col_name} ({col_type})")
+        
+        # If OutputColumns worked, we can return early
+        if columns or calculated_fields:
+            print(f"   ✅ SUCCESS via OutputColumns: {len(columns)} cols, {len(calculated_fields)} calc")
+            return columns, calculated_fields
+    else:
+        print(f"   ⚠️ No OutputColumns found")
+    
+    # ===================================================================
+    # METHOD 2: PhysicalTableMap -> InputColumns
+    # ===================================================================
+    print(f"   🔄 Trying PhysicalTableMap...")
+    physical_table_map = dataset_info.get('PhysicalTableMap', {})
+    
+    if physical_table_map:
+        print(f"   ✅ PhysicalTableMap found: {len(physical_table_map)} tables")
+        
+        for table_key, table_def in physical_table_map.items():
+            print(f"      Checking table: {table_key}")
+            
+            # Check all possible table types
+            for table_type in ['S3Source', 'RelationalTable', 'CustomSql']:
+                if table_type in table_def:
+                    table_source = table_def[table_type]
+                    input_columns = table_source.get('InputColumns', [])
+                    
+                    print(f"         {table_type}: {len(input_columns)} columns")
+                    
+                    for col in input_columns:
+                        col_name = col.get('Name')
+                        if col_name and col_name not in columns:
+                            columns.append(col_name)
+                            print(f"            ✓ {col_name}")
+        
+        if columns:
+            print(f"   ✅ SUCCESS via PhysicalTableMap: {len(columns)} columns")
+    else:
+        print(f"   ⚠️ No PhysicalTableMap found")
+    
+    # ===================================================================
+    # METHOD 3: LogicalTableMap -> Source -> PhysicalTableId
+    # ===================================================================
+    if not columns:
+        print(f"   🔄 Trying LogicalTableMap...")
+        logical_table_map = dataset_info.get('LogicalTableMap', {})
+        
+        if logical_table_map:
+            print(f"   ✅ LogicalTableMap found: {len(logical_table_map)} tables")
+            
+            for table_key, table_def in logical_table_map.items():
+                print(f"      Checking logical table: {table_key}")
+                
+                # Get the physical table ID this logical table references
+                source = table_def.get('Source', {})
+                physical_table_id = source.get('PhysicalTableId')
+                
+                if physical_table_id and physical_table_id in physical_table_map:
+                    print(f"         References physical table: {physical_table_id}")
+                    physical_table = physical_table_map[physical_table_id]
+                    
+                    # Extract columns from the referenced physical table
+                    for table_type in ['S3Source', 'RelationalTable', 'CustomSql']:
+                        if table_type in physical_table:
+                            input_columns = physical_table[table_type].get('InputColumns', [])
+                            print(f"         {table_type}: {len(input_columns)} columns")
+                            
+                            for col in input_columns:
+                                col_name = col.get('Name')
+                                if col_name and col_name not in columns:
+                                    columns.append(col_name)
+        
+        if columns:
+            print(f"   ✅ SUCCESS via LogicalTableMap: {len(columns)} columns")
+    
+    # ===================================================================
+    # METHOD 4: ColumnGroups
+    # ===================================================================
+    if not columns:
+        print(f"   🔄 Trying ColumnGroups...")
+        column_groups = dataset_info.get('ColumnGroups', [])
+        
+        if column_groups:
+            print(f"   ✅ ColumnGroups found: {len(column_groups)} groups")
+            
+            for group in column_groups:
+                geo_columns = group.get('GeoSpatialColumnGroup', {}).get('Columns', [])
+                for col_name in geo_columns:
+                    if col_name and col_name not in columns:
+                        columns.append(col_name)
+                        print(f"      ✓ GeoColumn: {col_name}")
+        
+        if columns:
+            print(f"   ✅ SUCCESS via ColumnGroups: {len(columns)} columns")
+    
+    # ===================================================================
+    # METHOD 5: FieldFolders (contains field names)
+    # ===================================================================
+    if not columns:
+        print(f"   🔄 Trying FieldFolders...")
+        field_folders = dataset_info.get('FieldFolders', {})
+        
+        if field_folders:
+            print(f"   ✅ FieldFolders found: {len(field_folders)} folders")
+            
+            for folder_name, folder_data in field_folders.items():
+                folder_columns = folder_data.get('columns', [])
+                print(f"      Folder '{folder_name}': {len(folder_columns)} columns")
+                
+                for col_name in folder_columns:
+                    if col_name and col_name not in columns:
+                        columns.append(col_name)
+        
+        if columns:
+            print(f"   ✅ SUCCESS via FieldFolders: {len(columns)} columns")
+    
+    # ===================================================================
+    # METHOD 6: CalculatedFields (for calculated fields)
+    # ===================================================================
+    print(f"   🔄 Checking CalculatedFields...")
+    calc_fields_list = dataset_info.get('CalculatedFields', [])
+    
+    if calc_fields_list:
+        print(f"   ✅ CalculatedFields found: {len(calc_fields_list)} fields")
+        
+        for calc_field in calc_fields_list:
+            field_name = calc_field.get('Name')
+            if field_name and field_name not in calculated_fields:
+                calculated_fields.append(field_name)
+                print(f"      📊 Calculated: {field_name}")
+    
+    # ===================================================================
+    # METHOD 7: LogicalTableMap -> DataTransforms -> CreateColumnsOperation
+    # ===================================================================
+    print(f"   🔄 Checking DataTransforms in LogicalTableMap...")
+    logical_table_map = dataset_info.get('LogicalTableMap', {})
+    
+    for table_key, table_def in logical_table_map.items():
+        data_transforms = table_def.get('DataTransforms', [])
+        
+        for transform in data_transforms:
+            if 'CreateColumnsOperation' in transform:
+                create_cols = transform['CreateColumnsOperation'].get('Columns', [])
+                print(f"      CreateColumnsOperation: {len(create_cols)} columns")
+                
+                for col in create_cols:
+                    col_name = col.get('ColumnName')
+                    if col_name and col_name not in calculated_fields:
+                        calculated_fields.append(col_name)
+                        print(f"         📊 Transform-created: {col_name}")
+    
+    # Remove duplicates while preserving order
+    columns = list(dict.fromkeys(columns))
+    calculated_fields = list(dict.fromkeys(calculated_fields))
+    
+    # Final summary
+    print(f"\n   🎯 FINAL RESULTS for '{dataset_name}':")
+    print(f"      Regular columns: {len(columns)}")
+    print(f"      Calculated fields: {len(calculated_fields)}")
+    
+    if not columns and not calculated_fields:
+        print(f"   ⚠️ WARNING: No columns found by any method!")
+        print(f"   Dataset keys available: {list(dataset_info.keys())}")
+    
+    return columns, calculated_fields
+
+
 # ==================== ENDPOINTS ====================
 
 @app.get("/")
@@ -233,66 +441,84 @@ def list_quicksight_dashboards(payload: ListDashboardsRequest):
 
 @app.post("/api/quicksight/list-datasets")
 def list_quicksight_datasets(payload: ListDataSetsRequest):
-    """List all QuickSight datasets in the account"""
+    """
+    List all QuickSight datasets with COMPLETE column and calculated field extraction
+    ✅ FIXED: Properly extracts columns from all possible sources
+    """
     try:
         print(f"\n{'='*60}")
-        print(f"📊 LISTING QUICKSIGHT DATASETS")
+        print(f"📊 LISTING QUICKSIGHT DATASETS - ENHANCED VERSION")
         print(f"{'='*60}")
         
         qs = get_quicksight_client(payload.role_arn, payload.region)
-        
-        # List datasets
         response = qs.list_data_sets(AwsAccountId=payload.aws_account_id)
         
         datasets = []
-        for summary in response.get("DataSetSummaries", []):
+        dataset_summaries = response.get("DataSetSummaries", [])
+        
+        print(f"\n📥 Found {len(dataset_summaries)} dataset(s) to process")
+        
+        for idx, summary in enumerate(dataset_summaries, 1):
             dataset_id = summary["DataSetId"]
+            dataset_name = summary["Name"]
             
-            # Get detailed dataset info
+            print(f"\n{'─'*60}")
+            print(f"📦 Dataset {idx}/{len(dataset_summaries)}: {dataset_name}")
+            print(f"   ID: {dataset_id}")
+            print(f"{'─'*60}")
+            
             try:
+                # ✅ CRITICAL: Get detailed dataset info
+                print(f"   🔍 Calling describe_data_set...")
                 dataset_detail = qs.describe_data_set(
                     AwsAccountId=payload.aws_account_id,
                     DataSetId=dataset_id
                 )
                 
-                dataset_info = dataset_detail.get("DataSet", {})
+                print(f"   ✅ describe_data_set succeeded")
                 
-                # Extract columns
-                columns = []
-                physical_table_map = dataset_info.get("PhysicalTableMap", {})
-                logical_table_map = dataset_info.get("LogicalTableMap", {})
+                # ✅ DEBUGGING: Check what we got back
+                if 'DataSet' not in dataset_detail:
+                    print(f"   ❌ ERROR: No 'DataSet' key in response!")
+                    print(f"   Response keys: {list(dataset_detail.keys())}")
+                    raise Exception("Invalid describe_data_set response - missing DataSet")
                 
-                # Get columns from physical tables
-                for table_key, table_val in physical_table_map.items():
-                    if "RelationalTable" in table_val:
-                        rel_table = table_val["RelationalTable"]
-                        columns.extend([col.get("Name", "") for col in rel_table.get("InputColumns", [])])
-                    elif "S3Source" in table_val:
-                        s3_source = table_val["S3Source"]
-                        columns.extend([col.get("Name", "") for col in s3_source.get("InputColumns", [])])
-                    elif "CustomSql" in table_val:
-                        custom_sql = table_val["CustomSql"]
-                        columns.extend([col.get("Name", "") for col in custom_sql.get("InputColumns", [])])
+                dataset_info = dataset_detail["DataSet"]
                 
-                # Extract calculated fields
-                calculated_fields = []
-                for calc_field in dataset_info.get("CalculatedFields", []):
-                    calculated_fields.append(calc_field.get("Name", ""))
+                # ✅ DEBUG: Print what fields are available
+                print(f"   📋 DataSet keys: {list(dataset_info.keys())[:10]}")
+                print(f"   Has OutputColumns: {'OutputColumns' in dataset_info}")
+                print(f"   Has PhysicalTableMap: {'PhysicalTableMap' in dataset_info}")
+                print(f"   Has LogicalTableMap: {'LogicalTableMap' in dataset_info}")
+                print(f"   Has CalculatedFields: {'CalculatedFields' in dataset_info}")
                 
-                # Also check logical table for additional calculated fields
-                for table_key, table_val in logical_table_map.items():
-                    data_transforms = table_val.get("DataTransforms", [])
-                    for transform in data_transforms:
-                        if "CreateColumnsOperation" in transform:
-                            calc_cols = transform["CreateColumnsOperation"].get("Columns", [])
-                            for col in calc_cols:
-                                col_name = col.get("ColumnName", "")
-                                if col_name and col_name not in calculated_fields:
-                                    calculated_fields.append(col_name)
+                # ✅ CHECK OutputColumns first
+                output_columns = dataset_info.get('OutputColumns', [])
+                print(f"   OutputColumns count: {len(output_columns)}")
                 
+                if output_columns:
+                    # Print first few columns for debugging
+                    for i, col in enumerate(output_columns[:3]):
+                        print(f"      Sample column {i+1}: {col.get('Name')} ({col.get('Type')})")
+                
+                # ✅ Use the extraction function
+                columns, calculated_fields = extract_columns_from_dataset(dataset_info)
+                
+                print(f"\n   ✅ EXTRACTION RESULT:")
+                print(f"      Regular columns: {len(columns)}")
+                print(f"      Calculated fields: {len(calculated_fields)}")
+                
+                if columns:
+                    print(f"      Column names: {', '.join(columns[:5])}" + 
+                          (f"... and {len(columns)-5} more" if len(columns) > 5 else ""))
+                
+                if calculated_fields:
+                    print(f"      Calculated: {', '.join(calculated_fields)}")
+                
+                # ✅ Build the dataset response
                 datasets.append({
                     "id": dataset_id,
-                    "name": summary["Name"],
+                    "name": dataset_name,
                     "arn": summary["Arn"],
                     "created_time": str(summary.get("CreatedTime", "")),
                     "last_updated": str(summary.get("LastUpdatedTime", "")),
@@ -303,14 +529,24 @@ def list_quicksight_datasets(payload: ListDataSetsRequest):
                     "calculated_field_count": len(calculated_fields)
                 })
                 
-                print(f"   - {summary['Name']}: {len(columns)} columns, {len(calculated_fields)} calc fields")
+                print(f"\n   ✅ SUCCESS: {dataset_name}")
+                print(f"      Added {len(columns)} columns and {len(calculated_fields)} calculated fields")
             
-            except Exception as detail_error:
-                print(f"⚠️ Could not get details for dataset {dataset_id}: {detail_error}")
-                # Add basic info even if details fail
+            except ClientError as ce:
+                error_code = ce.response['Error']['Code']
+                error_msg = ce.response['Error']['Message']
+                print(f"\n   ❌ AWS ERROR for {dataset_id}:")
+                print(f"      Code: {error_code}")
+                print(f"      Message: {error_msg}")
+                
+                # Check if it's a permission issue
+                if error_code in ['AccessDeniedException', 'ResourceNotFoundException']:
+                    print(f"      This might be a permissions issue or deleted dataset")
+                
+                # Add basic info on error
                 datasets.append({
                     "id": dataset_id,
-                    "name": summary["Name"],
+                    "name": dataset_name,
                     "arn": summary["Arn"],
                     "created_time": str(summary.get("CreatedTime", "")),
                     "last_updated": str(summary.get("LastUpdatedTime", "")),
@@ -318,26 +554,85 @@ def list_quicksight_datasets(payload: ListDataSetsRequest):
                     "columns": [],
                     "calculated_fields": [],
                     "column_count": 0,
-                    "calculated_field_count": 0
+                    "calculated_field_count": 0,
+                    "error": f"{error_code}: {error_msg}"
+                })
+            
+            except Exception as detail_error:
+                print(f"\n   ❌ UNEXPECTED ERROR for {dataset_id}:")
+                print(f"      Error: {str(detail_error)}")
+                import traceback
+                print(f"      Traceback:")
+                traceback.print_exc()
+                
+                # Add basic info on error
+                datasets.append({
+                    "id": dataset_id,
+                    "name": dataset_name,
+                    "arn": summary["Arn"],
+                    "created_time": str(summary.get("CreatedTime", "")),
+                    "last_updated": str(summary.get("LastUpdatedTime", "")),
+                    "import_mode": summary.get("ImportMode", "UNKNOWN"),
+                    "columns": [],
+                    "calculated_fields": [],
+                    "column_count": 0,
+                    "calculated_field_count": 0,
+                    "error": str(detail_error)
                 })
         
-        print(f"✅ Found {len(datasets)} dataset(s)")
+        print(f"\n{'='*60}")
+        print(f"✅ COMPLETED: {len(datasets)} dataset(s) processed")
+        print(f"{'='*60}")
+        
+        # ✅ Summary statistics
+        total_columns = sum(d['column_count'] for d in datasets)
+        total_calc = sum(d['calculated_field_count'] for d in datasets)
+        datasets_with_columns = sum(1 for d in datasets if d['column_count'] > 0)
+        
+        print(f"\n📊 SUMMARY:")
+        print(f"   Total datasets: {len(datasets)}")
+        print(f"   Datasets with columns: {datasets_with_columns}")
+        print(f"   Total columns extracted: {total_columns}")
+        print(f"   Total calculated fields: {total_calc}")
         print(f"{'='*60}\n")
         
         return {
             "count": len(datasets),
-            "datasets": datasets
+            "datasets": datasets,
+            "summary": {
+                "total_columns": total_columns,
+                "total_calculated_fields": total_calc,
+                "datasets_with_data": datasets_with_columns
+            }
         }
     
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        error_msg = e.response['Error']['Message']
+        print(f"\n❌ AWS CLIENT ERROR:")
+        print(f"   Code: {error_code}")
+        print(f"   Message: {error_msg}")
+        print(f"{'='*60}\n")
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": f"AWS Error: {error_code}",
+                "message": error_msg
+            }
+        )
+    
     except Exception as e:
-        error_msg = str(e)
-        print(f"❌ List datasets failed: {error_msg}")
+        print(f"\n❌ UNEXPECTED ERROR in list_quicksight_datasets:")
+        print(f"   Error: {str(e)}")
+        import traceback
+        print(f"   Traceback:")
+        traceback.print_exc()
         print(f"{'='*60}\n")
         raise HTTPException(
             status_code=500,
             detail={
                 "error": "Failed to list datasets",
-                "message": error_msg
+                "message": str(e)
             }
         )
 
