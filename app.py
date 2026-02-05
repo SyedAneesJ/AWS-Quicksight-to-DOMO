@@ -990,6 +990,75 @@ def create_domo_card(payload: CreateDomoCardRequest):
             }
         )
 
+# ==================== DOMO DEBUG ====================
+
+@app.get("/api/domo/debug")
+def domo_debug():
+    """
+    Debug Domo OAuth and API access.
+    Returns env snapshot (non-secret), token scopes, and a basic API probe.
+    """
+    try:
+        base_url = (
+            os.environ.get("DOMO_BASE_URL")
+            or os.environ.get("DOMO_INSTANCE_URL")
+            or os.environ.get("DOMO_INSTANCE")
+        )
+        client_id = os.environ.get("DOMO_CLIENT_ID")
+        client_secret = os.environ.get("DOMO_CLIENT_SECRET")
+        oauth_scope = os.environ.get("DOMO_OAUTH_SCOPE", "dashboard data")
+
+        if not base_url or not client_id or not client_secret:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "Domo config missing",
+                    "message": "DOMO_BASE_URL / DOMO_CLIENT_ID / DOMO_CLIENT_SECRET must be set"
+                }
+            )
+
+        token = get_domo_access_token(client_id, client_secret)
+
+        # Decode token payload for scopes (no signature verification)
+        payload_b64 = token.split(".")[1]
+        payload_b64 += "=" * (-len(payload_b64) % 4)
+        payload_json = base64.urlsafe_b64decode(payload_b64).decode("utf-8")
+        payload = json.loads(payload_json)
+        token_scopes = payload.get("scope")
+
+        # Probe a basic endpoint to validate auth
+        probe_url = f"{base_url.rstrip('/')}/api/content/v3/cards"
+        probe_headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+        probe_resp = requests.get(probe_url, headers=probe_headers)
+
+        return {
+            "env": {
+                "DOMO_BASE_URL": base_url,
+                "DOMO_OAUTH_SCOPE": oauth_scope,
+                "DOMO_CLIENT_ID_prefix": client_id[:6] if client_id else None
+            },
+            "token_scopes": token_scopes,
+            "probe": {
+                "url": probe_url,
+                "status": probe_resp.status_code,
+                "response_text": probe_resp.text[:1000]
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Domo debug failed",
+                "message": str(e)
+            }
+        )
+
 # ==================== DOMO TRANSFORMATION ====================
 
 @app.post("/api/transform/unified-to-domo")
