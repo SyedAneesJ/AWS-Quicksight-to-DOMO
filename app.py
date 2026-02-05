@@ -11,6 +11,7 @@ import boto3
 from botocore.exceptions import ClientError
 import json
 import os
+import requests
 from typing import Dict, Any, List, Optional
 
 # ✅ IMPORT THE WORKING CONVERSION FUNCTION
