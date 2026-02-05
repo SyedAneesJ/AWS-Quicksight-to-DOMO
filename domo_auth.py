@@ -1,3 +1,4 @@
+import os
 import requests
 from base64 import b64encode
 
@@ -16,10 +17,12 @@ def get_domo_access_token(client_id: str, client_secret: str) -> str:
         "Content-Type": "application/x-www-form-urlencoded"
     }
 
+    scope = os.environ.get("DOMO_OAUTH_SCOPE", "dashboard data")
+
     data = {
         "grant_type": "client_credentials",
         # minimum scopes required to create cards
-        "scope": "dashboard data"
+        "scope": scope
     }
 
     response = requests.post(

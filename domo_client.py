@@ -31,6 +31,12 @@ class DomoClient:
         print("RESPONSE TEXT:", resp.text)
 
         if resp.status_code not in (200, 201):
+            if resp.status_code == 401:
+                raise RuntimeError(
+                    "Domo API error 401: Unauthorized. "
+                    "Check DOMO_CLIENT_ID/SECRET, scopes (DOMO_OAUTH_SCOPE), "
+                    "and that the client has permissions to create cards."
+                )
             raise RuntimeError(
                 f"Domo API error {resp.status_code}: {resp.text}"
             )

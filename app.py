@@ -16,6 +16,7 @@ from typing import Dict, Any, List, Optional
 # ✅ IMPORT THE WORKING CONVERSION FUNCTION
 from run_qs_to_unified import transform_qs_dashboard_to_unified
 from domo_auth import get_domo_access_token
+import base64
 from domo_client import DomoClient
 
 app = FastAPI(title="QuickSight to Domo Migration API")
@@ -909,6 +910,17 @@ def get_domo_client() -> DomoClient:
         )
 
     token = get_domo_access_token(client_id, client_secret)
+
+    # Decode token payload for debugging scopes (no signature verification)
+    try:
+        payload_b64 = token.split(".")[1]
+        payload_b64 += "=" * (-len(payload_b64) % 4)
+        payload_json = base64.urlsafe_b64decode(payload_b64).decode("utf-8")
+        payload = json.loads(payload_json)
+        scope = payload.get("scope")
+        print(f"DOMO OAuth scopes: {scope}")
+    except Exception as decode_error:
+        print(f"⚠️ Could not decode token payload: {decode_error}")
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
