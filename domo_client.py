@@ -10,14 +10,22 @@ class DomoClient:
         url = f"{self.base_url}/api/content/v3/cards/kpi?pageId={page_id}"
 
         print("CREATE CARD")
-        print("METHOD: PUT")
+        print("METHOD: PUT (fallback to POST on 405)")
         print("URL:", url)
 
-        resp = requests.put(   
+        resp = requests.put(
             url,
             headers=self.headers,
             json=payload
         )
+
+        if resp.status_code == 405:
+            print("PUT not allowed. Retrying with POST...")
+            resp = requests.post(
+                url,
+                headers=self.headers,
+                json=payload
+            )
 
         print("STATUS:", resp.status_code)
         print("RESPONSE TEXT:", resp.text)

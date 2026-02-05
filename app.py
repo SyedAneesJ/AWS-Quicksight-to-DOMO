@@ -15,6 +15,8 @@ from typing import Dict, Any, List, Optional
 
 # ✅ IMPORT THE WORKING CONVERSION FUNCTION
 from run_qs_to_unified import transform_qs_dashboard_to_unified
+from domo_auth import get_domo_access_token
+from domo_client import DomoClient
 
 app = FastAPI(title="QuickSight to Domo Migration API")
 
@@ -64,6 +66,13 @@ class TransformToDomoRequest(BaseModel):
 
 class AnalyzeDatasetsRequest(BaseModel):
     unified_schema: Dict[str, Any]
+
+class CreateDomoCardRequest(BaseModel):
+    page_id: str
+    title: str
+    dataset_id: str
+    visual_type: Optional[str] = None
+    description: Optional[str] = None
 
 # ==================== AWS HELPER ====================
 
@@ -868,6 +877,104 @@ def analyze_datasets(payload: AnalyzeDatasetsRequest):
             detail={
                 "error": "Dataset analysis failed",
                 "message": error_msg
+            }
+        )
+
+# ==================== DOMO CARD CREATION ====================
+
+def get_domo_client() -> DomoClient:
+    base_url = (
+        os.environ.get("DOMO_BASE_URL")
+        or os.environ.get("DOMO_INSTANCE_URL")
+        or os.environ.get("DOMO_INSTANCE")
+    )
+    if not base_url:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Domo config missing",
+                "message": "Set DOMO_BASE_URL (e.g., https://gwcteq-partner.domo.com)"
+            }
+        )
+
+    client_id = os.environ.get("DOMO_CLIENT_ID")
+    client_secret = os.environ.get("DOMO_CLIENT_SECRET")
+    if not client_id or not client_secret:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Domo credentials missing",
+                "message": "Set DOMO_CLIENT_ID and DOMO_CLIENT_SECRET in backend env"
+            }
+        )
+
+    token = get_domo_access_token(client_id, client_secret)
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    return DomoClient(base_url=base_url, headers=headers)
+
+
+@app.post("/api/domo/create-card")
+def create_domo_card(payload: CreateDomoCardRequest):
+    """
+    Create a KPI card in Domo using server-side auth.
+    """
+    try:
+        if not payload.dataset_id:
+            raise HTTPException(status_code=400, detail={
+                "error": "dataset_id required",
+                "message": "No dataset_id provided"
+            })
+
+        domo = get_domo_client()
+
+        card_payload = {
+            "definition": {
+                "title": payload.title or "Migrated Visual",
+                "description": payload.description or f"Migrated from QuickSight - {payload.visual_type or 'Visual'}",
+                "cardType": "kpi",
+                "visualization": {
+                    "type": "single_value",
+                    "settings": {
+                        "showValue": True,
+                        "showChange": False,
+                        "formatting": {
+                            "decimalPlaces": 0
+                        }
+                    }
+                }
+            },
+            "dataProvider": {
+                "dataSourceId": payload.dataset_id,
+                "query": {
+                    "fields": [
+                        {
+                            "columnName": "value",
+                            "function": "count"
+                        }
+                    ],
+                    "filters": [],
+                    "sorts": []
+                }
+            }
+        }
+
+        result = domo.create_card(payload.page_id, card_payload)
+        return {
+            "status": "success",
+            "card": result
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Failed to create Domo card",
+                "message": str(e)
             }
         )
 
