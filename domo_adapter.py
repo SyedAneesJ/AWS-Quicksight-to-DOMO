@@ -115,6 +115,14 @@ class DomoAdapter:
 
 
     def _deploy_visual(self, page_id: str, visual: dict):
+        payload = self.build_card_config(visual)
+        return self.client.create_card(page_id, payload)
+
+    def build_card_config(self, visual: dict) -> dict:
+        """
+        Build a Domo card config payload without creating the card.
+        Useful for frontend codeengine flows.
+        """
         visual_type = visual["type"].upper()
 
         if visual_type == "TABLE":
@@ -142,7 +150,7 @@ class DomoAdapter:
         else:
             raise NotImplementedError(f"Unsupported visual type: {visual_type}")
 
-        return self.client.create_card(page_id, payload)
+        return payload
 
 
     def _build_kpi_payload(self, visual):

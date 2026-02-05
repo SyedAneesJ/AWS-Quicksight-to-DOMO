@@ -16,6 +16,8 @@ from typing import Dict, Any, List, Optional
 
 # ✅ IMPORT THE WORKING CONVERSION FUNCTION
 from run_qs_to_unified import transform_qs_dashboard_to_unified
+from domo_adapter import DomoAdapter
+from dataset_resolver import StaticDatasetResolver
 from domo_auth import get_domo_access_token
 import base64
 from domo_client import DomoClient
@@ -1149,6 +1151,73 @@ def transform_to_domo(payload: TransformToDomoRequest):
             status_code=500,
             detail={
                 "error": "Transformation to Domo failed",
+                "message": error_msg
+            }
+        )
+
+# ==================== DOMO CARD CONFIGS (FOR CODEENGINE) ====================
+
+@app.post("/api/transform/unified-to-domo-configs")
+def transform_to_domo_configs(payload: TransformToDomoRequest):
+    """
+    Transform unified schema to full Domo card configs (definition/dataProvider/variables).
+    Intended for frontend codeengine createcard flow.
+    """
+    try:
+        print(f"\n{'='*60}")
+        print(f"🔧 BUILDING DOMO CARD CONFIGS")
+        print(f"{'='*60}")
+
+        unified = payload.unified_schema
+        dataset_mapping = payload.dataset_mapping
+
+        resolver = StaticDatasetResolver(dataset_mapping)
+        adapter = DomoAdapter(domo_client=None, dataset_resolver=resolver, column_mapping={})
+
+        card_configs = []
+        errors = []
+
+        for page in unified.get("pages", []):
+            for visual in page.get("visuals", []):
+                try:
+                    config = adapter.build_card_config(visual)
+                    card_configs.append({
+                        "visual_id": visual.get("id"),
+                        "visual_type": visual.get("type"),
+                        "title": visual.get("title", "Untitled Visual"),
+                        "config": config
+                    })
+                    print(f"   ✅ Built config for {visual.get('type')}: {visual.get('title')}")
+                except Exception as visual_error:
+                    errors.append({
+                        "visual_id": visual.get("id"),
+                        "error": str(visual_error)
+                    })
+                    print(f"   ❌ Failed config for {visual.get('type')}: {visual_error}")
+
+        print(f"\n{'='*60}")
+        print(f"✅ Built {len(card_configs)} card config(s)")
+        if errors:
+            print(f"⚠️  {len(errors)} error(s) occurred")
+        print(f"{'='*60}\n")
+
+        return {
+            "status": "success",
+            "card_count": len(card_configs),
+            "error_count": len(errors),
+            "card_configs": card_configs,
+            "errors": errors
+        }
+
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ Config transformation failed: {error_msg}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Transformation to Domo configs failed",
                 "message": error_msg
             }
         )
