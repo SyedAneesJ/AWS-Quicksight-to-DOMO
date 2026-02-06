@@ -528,6 +528,28 @@ def list_quicksight_datasets(payload: ListDataSetsRequest):
                 if calculated_fields:
                     print(f"      Calculated: {', '.join(calculated_fields)}")
                 
+                # ✅ Derive source type (best-effort)
+                source_type = "Unknown"
+                physical_table_map = dataset_info.get("PhysicalTableMap", {}) or {}
+                for _, table_def in physical_table_map.items():
+                    if "S3Source" in table_def:
+                        source_type = "S3"
+                        break
+                    if "RelationalTable" in table_def:
+                        data_source_arn = table_def["RelationalTable"].get("DataSourceArn", "")
+                        if "redshift" in data_source_arn:
+                            source_type = "Redshift"
+                        elif "athena" in data_source_arn:
+                            source_type = "Athena"
+                        elif "rds" in data_source_arn:
+                            source_type = "RDS"
+                        else:
+                            source_type = "Relational"
+                        break
+                    if "CustomSql" in table_def:
+                        source_type = "CustomSQL"
+                        break
+
                 # ✅ Build the dataset response
                 datasets.append({
                     "id": dataset_id,
@@ -536,6 +558,7 @@ def list_quicksight_datasets(payload: ListDataSetsRequest):
                     "created_time": str(summary.get("CreatedTime", "")),
                     "last_updated": str(summary.get("LastUpdatedTime", "")),
                     "import_mode": summary.get("ImportMode", "UNKNOWN"),
+                    "source_type": source_type,
                     "columns": columns,
                     "calculated_fields": calculated_fields,
                     "column_count": len(columns),
@@ -1178,6 +1201,8 @@ def transform_to_domo_configs(payload: TransformToDomoRequest):
         errors = []
 
         for page in unified.get("pages", []):
+            page_name = page.get("name") or page.get("pageName") or page.get("title") or "Untitled Sheet"
+            page_id = page.get("id") or page.get("pageId")
             for visual in page.get("visuals", []):
                 try:
                     config = adapter.build_card_config(visual)
@@ -1185,7 +1210,9 @@ def transform_to_domo_configs(payload: TransformToDomoRequest):
                         "visual_id": visual.get("id"),
                         "visual_type": visual.get("type"),
                         "title": visual.get("title", "Untitled Visual"),
-                        "config": config
+                        "config": config,
+                        "page_name": page_name,
+                        "page_id": page_id
                     })
                     print(f"   ✅ Built config for {visual.get('type')}: {visual.get('title')}")
                 except Exception as visual_error:
