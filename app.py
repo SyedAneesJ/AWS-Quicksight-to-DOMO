@@ -54,6 +54,13 @@ class ListDataSetsRequest(BaseModel):
     region: str
     role_arn: str
 
+class DescribeDataSetRequest(BaseModel):
+    aws_account_id: str
+    region: str
+    role_arn: str
+    dataset_id: Optional[str] = None
+    dataset_arn: Optional[str] = None
+
 class ExtractDashboardRequest(BaseModel):
     aws_account_id: str
     region: str
@@ -669,6 +676,68 @@ def list_quicksight_datasets(payload: ListDataSetsRequest):
             detail={
                 "error": "Failed to list datasets",
                 "message": str(e)
+            }
+        )
+
+# ==================== QUICKSIGHT DATASET DETAIL ====================
+
+@app.post("/api/quicksight/describe-dataset")
+def describe_quicksight_dataset(payload: DescribeDataSetRequest):
+    """
+    Fetch a single QuickSight dataset schema (columns + calculated fields).
+    """
+    try:
+        dataset_id = payload.dataset_id
+        if not dataset_id and payload.dataset_arn:
+            dataset_id = payload.dataset_arn.split("/")[-1]
+
+        if not dataset_id:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "dataset_id required",
+                    "message": "Provide dataset_id or dataset_arn"
+                }
+            )
+
+        qs = get_quicksight_client(payload.role_arn, payload.region)
+        dataset_detail = qs.describe_data_set(
+            AwsAccountId=payload.aws_account_id,
+            DataSetId=dataset_id
+        )
+
+        if "DataSet" not in dataset_detail:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "Invalid describe_data_set response",
+                    "message": "Missing DataSet in response"
+                }
+            )
+
+        dataset_info = dataset_detail["DataSet"]
+        columns, calculated_fields = extract_columns_from_dataset(dataset_info)
+
+        return {
+            "status": "success",
+            "dataset_id": dataset_id,
+            "name": dataset_info.get("Name"),
+            "arn": dataset_info.get("Arn"),
+            "columns": columns,
+            "calculated_fields": calculated_fields,
+            "column_count": len(columns),
+            "calculated_field_count": len(calculated_fields)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = str(e)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Failed to describe dataset",
+                "message": error_msg
             }
         )
 
