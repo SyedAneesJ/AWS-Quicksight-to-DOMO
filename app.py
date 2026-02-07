@@ -88,6 +88,10 @@ class CreateDomoCardRequest(BaseModel):
 class DomoDatasetDetailRequest(BaseModel):
     dataset_id: str
 
+class DomoDatasetListRequest(BaseModel):
+    limit: Optional[int] = 50
+    offset: Optional[int] = 0
+
 # ==================== AWS HELPER ====================
 
 def get_quicksight_client(role_arn: str, region: str):
@@ -1234,6 +1238,75 @@ def domo_dataset_detail(payload: DomoDatasetDetailRequest):
             status_code=500,
             detail={
                 "error": "Domo dataset detail failed",
+                "message": str(e)
+            }
+        )
+
+# ==================== DOMO DATASET LIST (INSTANCE PROXY) ====================
+
+@app.post("/api/domo/list-datasets")
+def domo_list_datasets(payload: DomoDatasetListRequest):
+    """
+    List Domo datasets from instance URL (v3) using OAuth.
+    """
+    try:
+        base_url = (
+            os.environ.get("DOMO_BASE_URL")
+            or os.environ.get("DOMO_INSTANCE_URL")
+            or os.environ.get("DOMO_INSTANCE")
+        )
+        if not base_url:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "Domo config missing",
+                    "message": "Set DOMO_BASE_URL (e.g., https://gwcteq-partner.domo.com)"
+                }
+            )
+
+        client_id = os.environ.get("DOMO_CLIENT_ID")
+        client_secret = os.environ.get("DOMO_CLIENT_SECRET")
+        if not client_id or not client_secret:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "Domo credentials missing",
+                    "message": "Set DOMO_CLIENT_ID and DOMO_CLIENT_SECRET in backend env"
+                }
+            )
+
+        token = get_domo_access_token(client_id, client_secret)
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+
+        limit = payload.limit or 50
+        offset = payload.offset or 0
+        list_url = f"{base_url.rstrip('/')}/api/data/v3/datasources?limit={limit}&offset={offset}&includeAllDetails=true&includePrivate=true"
+
+        resp = requests.get(list_url, headers=headers)
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=resp.status_code,
+                detail={
+                    "error": "Failed to list datasets",
+                    "message": resp.text
+                }
+            )
+
+        return {
+            "status": "success",
+            "datasets": resp.json()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Domo dataset list failed",
                 "message": str(e)
             }
         )
