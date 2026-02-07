@@ -85,6 +85,9 @@ class CreateDomoCardRequest(BaseModel):
     visual_type: Optional[str] = None
     description: Optional[str] = None
 
+class DomoDatasetDetailRequest(BaseModel):
+    dataset_id: str
+
 # ==================== AWS HELPER ====================
 
 def get_quicksight_client(role_arn: str, region: str):
@@ -1150,6 +1153,87 @@ def domo_debug():
             status_code=500,
             detail={
                 "error": "Domo debug failed",
+                "message": str(e)
+            }
+        )
+
+# ==================== DOMO DATASET DETAIL (INSTANCE PROXY) ====================
+
+@app.post("/api/domo/dataset-detail")
+def domo_dataset_detail(payload: DomoDatasetDetailRequest):
+    """
+    Fetch Domo dataset details + schema from instance URLs.
+    Uses OAuth token and instance base URL.
+    """
+    try:
+        base_url = (
+            os.environ.get("DOMO_BASE_URL")
+            or os.environ.get("DOMO_INSTANCE_URL")
+            or os.environ.get("DOMO_INSTANCE")
+        )
+        if not base_url:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "Domo config missing",
+                    "message": "Set DOMO_BASE_URL (e.g., https://gwcteq-partner.domo.com)"
+                }
+            )
+
+        client_id = os.environ.get("DOMO_CLIENT_ID")
+        client_secret = os.environ.get("DOMO_CLIENT_SECRET")
+        if not client_id or not client_secret:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "Domo credentials missing",
+                    "message": "Set DOMO_CLIENT_ID and DOMO_CLIENT_SECRET in backend env"
+                }
+            )
+
+        token = get_domo_access_token(client_id, client_secret)
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+
+        dataset_id = payload.dataset_id
+        details_url = f"{base_url.rstrip('/')}/api/data/v3/datasources/{dataset_id}?includeAllDetails=true&includePrivate=true"
+        schema_url = f"{base_url.rstrip('/')}/api/query/v1/datasources/{dataset_id}/schema/indexed?options=INCLUDE_DATA_CONTROL_COLUMN_DETAILS"
+
+        details_resp = requests.get(details_url, headers=headers)
+        if details_resp.status_code != 200:
+            raise HTTPException(
+                status_code=details_resp.status_code,
+                detail={
+                    "error": "Failed to fetch dataset details",
+                    "message": details_resp.text
+                }
+            )
+
+        schema_resp = requests.get(schema_url, headers=headers)
+        if schema_resp.status_code != 200:
+            raise HTTPException(
+                status_code=schema_resp.status_code,
+                detail={
+                    "error": "Failed to fetch dataset schema",
+                    "message": schema_resp.text
+                }
+            )
+
+        return {
+            "status": "success",
+            "dataset": details_resp.json(),
+            "schema": schema_resp.json()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Domo dataset detail failed",
                 "message": str(e)
             }
         )
