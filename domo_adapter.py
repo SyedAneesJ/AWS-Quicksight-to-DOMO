@@ -1,6 +1,5 @@
 # domo_adapter.py - FINAL FIXED VERSION
 from typing import Dict, Any
-import re
 from calc_field_translator import qs_to_beast_mode_sql
 
 class DomoAdapter:
@@ -114,14 +113,6 @@ class DomoAdapter:
         date_keywords = ["date", "time", "timestamp", "datetime", "day", "month", "year"]
         return any(keyword in column_name.lower() for keyword in date_keywords)
 
-    def _extract_x_column_and_grain(self, x_entry):
-        """
-        Normalize x-axis entry into (column, time_grain or None).
-        """
-        if isinstance(x_entry, dict):
-            return x_entry.get("column"), x_entry.get("timeGrain")
-        return x_entry, None
-
 
     def _deploy_visual(self, page_id: str, visual: dict):
         payload = self.build_card_config(visual)
@@ -166,10 +157,8 @@ class DomoAdapter:
         dataset_id = self.dataset_resolver.resolve(visual["datasetRef"])
         m = visual["measures"][0]
 
-        raw_col = m["column"]
-        raw_agg = self._normalize_aggregation(m["aggregation"])
-        column_name = self._map_column(raw_col)
-        aggregation = self._normalize_aggregation(raw_agg)
+        column_name = self._map_column(m["column"])
+        aggregation = self._normalize_aggregation(m["aggregation"])
 
         return {
             "definition": {
@@ -208,10 +197,8 @@ class DomoAdapter:
         m = visual["measures"][0]
 
         x_mapped = self._map_column(x)
-        raw_col = m["column"]
-        raw_agg = self._normalize_aggregation(m["aggregation"])
-        column_name = self._map_column(raw_col)
-        aggregation = self._normalize_aggregation(raw_agg)
+        column_name = self._map_column(m["column"])
+        aggregation = self._normalize_aggregation(m["aggregation"])
         
         x_title = x_mapped.replace("_", " ").title()
         y_title = f"{aggregation} of {column_name}".replace("_", " ").title()
@@ -268,10 +255,8 @@ class DomoAdapter:
         
         x_mapped = self._map_column(x)
         stack_mapped = self._map_column(stack)
-        raw_col = m["column"]
-        raw_agg = self._normalize_aggregation(m["aggregation"])
-        column_name = self._map_column(raw_col)
-        aggregation = self._normalize_aggregation(raw_agg)
+        column_name = self._map_column(m["column"])
+        aggregation = self._normalize_aggregation(m["aggregation"])
 
         x_title = x_mapped.replace("_", " ").title()
         y_title = f"{aggregation} of {column_name}".replace("_", " ")
@@ -350,10 +335,8 @@ class DomoAdapter:
 
         # -------- MEASURE --------
         m = visual["measures"][0]
-        raw_col = m["column"]
-        raw_agg = self._normalize_aggregation(m.get("aggregation", "SUM"))
-        val_col = self._map_column(raw_col)
-        aggregation = self._normalize_aggregation(raw_agg)
+        val_col = self._map_column(m["column"])
+        aggregation = self._normalize_aggregation(m.get("aggregation", "SUM"))
 
         # -------- CHECK FOR MULTI-LINE (SERIES) --------
         stack_fields = visual.get("stack", [])
@@ -508,10 +491,7 @@ class DomoAdapter:
                 })
 
             elif col["type"] == "MEASURE":
-                raw_col = col["field"]
-                raw_agg = self._normalize_aggregation(col["aggregation"])
-                column_name = self._map_column(raw_col)
-                aggregation = self._normalize_aggregation(raw_agg)
+                aggregation = self._normalize_aggregation(col["aggregation"])
                 columns.append({
                     "column": column_name,
                     "aggregation": aggregation,
@@ -546,22 +526,12 @@ class DomoAdapter:
 
     def _build_area_payload(self, visual: dict):
         dataset_id = self.dataset_resolver.resolve(visual["datasetRef"])
-        x_entry = visual["x"][0]
+        x = visual["x"][0]
         m = visual["measures"][0]
 
-        x_col, time_grain = self._extract_x_column_and_grain(x_entry)
-        x_mapped = self._map_column(x_col)
-        raw_col = m["column"]
-        raw_agg = self._normalize_aggregation(m["aggregation"])
-        column_name = self._map_column(raw_col)
-        aggregation = self._normalize_aggregation(raw_agg)
-
-        date_grain = None
-        if time_grain and self._is_date_column(x_mapped):
-            date_grain = {
-                "column": x_mapped,
-                "dateTimeElement": self._map_time_grain_to_domo(time_grain)
-            }
+        x_mapped = self._map_column(x)
+        column_name = self._map_column(m["column"])
+        aggregation = self._normalize_aggregation(m["aggregation"])
 
         return {
             "definition": {
@@ -584,8 +554,7 @@ class DomoAdapter:
                         "groupBy": [
                             {"column": x_mapped}
                         ],
-                        "distinct": False,
-                        **({"dateGrain": date_grain} if date_grain else {})
+                        "distinct": False
                     }
                 },
                 "charts": {
@@ -605,30 +574,34 @@ class DomoAdapter:
         dataset_id = self.dataset_resolver.resolve(visual["datasetRef"])
 
         x_entry = visual["x"][0]
-        x_col, time_grain = self._extract_x_column_and_grain(x_entry)
-        x_mapped = self._map_column(x_col)
+        x_col = self._map_column(x_entry["column"])
+        time_grain = x_entry.get("timeGrain", "DAY")
+
+        domo_grain = self._map_time_grain_to_domo(time_grain)
+
+        calendar_column_map = {
+            "DAY": "CalendarDay",
+            "WEEK": "CalendarWeek",
+            "MONTH": "CalendarMonth",
+            "QUARTER": "CalendarQuarter",
+            "YEAR": "CalendarYear"
+        }
+
+        calendar_column = calendar_column_map.get(time_grain, "CalendarDay")
 
         measure = visual["measures"][0]
-        raw_col = measure["column"]
-        raw_agg = self._normalize_aggregation(measure["aggregation"])
-        value_col = self._map_column(raw_col)
-        aggregation = self._normalize_aggregation(raw_agg)
+        value_col = self._map_column(measure["column"])
+        aggregation = self._normalize_aggregation(measure["aggregation"])
 
         stack_col = self._map_column(visual["stack"][0])
-
-        date_grain = None
-        if time_grain and self._is_date_column(x_mapped):
-            date_grain = {
-                "column": x_mapped,
-                "dateTimeElement": self._map_time_grain_to_domo(time_grain)
-            }
 
         main_subscription = {
             "name": "main",
             "dataSourceId": dataset_id,
             "columns": [
                 {
-                    "column": x_mapped,
+                    "column": calendar_column,
+                    "calendar": True,
                     "mapping": "ITEM"
                 },
                 {
@@ -645,13 +618,17 @@ class DomoAdapter:
             "orderBy": [],
             "groupBy": [
                 {
-                    "column": x_mapped
+                    "column": calendar_column,
+                    "calendar": True
                 },
                 {
                     "column": stack_col
                 }
             ],
-            **({"dateGrain": date_grain} if date_grain else {}),
+            "dateGrain": {
+                "column": x_col,
+                "dateTimeElement": domo_grain
+            },
             "fiscal": False,
             "projection": False,
             "distinct": False
@@ -718,10 +695,8 @@ class DomoAdapter:
         m = visual["measures"][0]
 
         category_mapped = self._map_column(category)
-        raw_col = m["column"]
-        raw_agg = self._normalize_aggregation(m["aggregation"])
-        column_name = self._map_column(raw_col)
-        aggregation = self._normalize_aggregation(raw_agg)
+        column_name = self._map_column(m["column"])
+        aggregation = self._normalize_aggregation(m["aggregation"])
 
         return {
             "definition": {
@@ -772,12 +747,10 @@ class DomoAdapter:
         if not x_measure or not y_measure:
             raise ValueError("Scatter/Bubble chart requires both X and Y axis measures")
         
-        x_raw_col, x_raw_agg = x_measure["column"], self._normalize_aggregation(x_measure["aggregation"])
-        y_raw_col, y_raw_agg = y_measure["column"], self._normalize_aggregation(y_measure["aggregation"])
-        x_col = self._map_column(x_raw_col)
-        y_col = self._map_column(y_raw_col)
-        x_agg = self._normalize_aggregation(x_raw_agg)
-        y_agg = self._normalize_aggregation(y_raw_agg)
+        x_col = self._map_column(x_measure["column"])
+        y_col = self._map_column(y_measure["column"])
+        x_agg = self._normalize_aggregation(x_measure["aggregation"])
+        y_agg = self._normalize_aggregation(y_measure["aggregation"])
         
         x_title = visual.get("axes", {}).get("x", {}).get("title", None)
         y_title = visual.get("axes", {}).get("y", {}).get("title", None)
@@ -814,10 +787,8 @@ class DomoAdapter:
                 })
         
         if size_measure and visual["type"].upper() == "BUBBLE":
-            size_raw_col = size_measure["column"]
-            size_raw_agg = self._normalize_aggregation(size_measure["aggregation"])
-            size_col = self._map_column(size_raw_col)
-            size_agg = self._normalize_aggregation(size_raw_agg)
+            size_col = self._map_column(size_measure["column"])
+            size_agg = self._normalize_aggregation(size_measure["aggregation"])
             columns.append({
                 "column": size_col,
                 "mapping": "BUBBLESIZE",
@@ -917,10 +888,8 @@ class DomoAdapter:
         m = visual["measures"][0]
 
         category_mapped = self._map_column(category)
-        raw_col = m["column"]
-        raw_agg = self._normalize_aggregation(m["aggregation"])
-        column_name = self._map_column(raw_col)
-        aggregation = self._normalize_aggregation(raw_agg)
+        column_name = self._map_column(m["column"])
+        aggregation = self._normalize_aggregation(m["aggregation"])
 
         return {
             "definition": {
@@ -981,15 +950,11 @@ class DomoAdapter:
             raise ValueError("COMBO requires at least one BAR and one LINE measure")
 
         # Resolve columns
-        bar_raw_col = bar_measures[0]["column"]
-        bar_raw_agg = self._normalize_aggregation(bar_measures[0]["aggregation"])
-        bar_col = self._map_column(bar_raw_col)
-        bar_agg = self._normalize_aggregation(bar_raw_agg)
+        bar_col = self._map_column(bar_measures[0]["column"])
+        bar_agg = self._normalize_aggregation(bar_measures[0]["aggregation"])
 
-        line_raw_col = line_measures[0]["column"]
-        line_raw_agg = self._normalize_aggregation(line_measures[0]["aggregation"])
-        line_col = self._map_column(line_raw_col)
-        line_agg = self._normalize_aggregation(line_raw_agg)
+        line_col = self._map_column(line_measures[0]["column"])
+        line_agg = self._normalize_aggregation(line_measures[0]["aggregation"])
 
         series_col = self._map_column(series_list[0]) if series_list else None
 
