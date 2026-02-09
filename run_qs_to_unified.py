@@ -1,6 +1,7 @@
 import json
 from typing import Dict, Any, Optional
 from calc_field_translator import normalize_qs_calc
+from calc_field_classifier import classify_calc_expression
 
 
 # =========================================================
@@ -353,9 +354,18 @@ def transform_qs_dashboard_to_unified(qs_dashboard: Dict[str, Any]) -> Dict[str,
         
         # Keep complex calculated fields
         normalized = normalize_qs_calc(expr)
+        classified = classify_calc_expression(expr)
+        dataset_identifier = cf.get("DataSetIdentifier")
+        dataset_ref = dataset_id_map.get(dataset_identifier) if dataset_identifier else None
+
         calculated_fields.append({
             "name": cf["Name"],
-            "expression": normalized["row_expression"]
+            "expression": expr,
+            "normalized": normalized,
+            "calculationType": classified["calculationType"],
+            "row": classified.get("row"),
+            "aggregate": classified.get("aggregate"),
+            "datasetRef": dataset_ref
         })
 
     # -----------------------------
