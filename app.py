@@ -19,7 +19,6 @@ from run_qs_to_unified import transform_qs_dashboard_to_unified
 from domo_adapter import DomoAdapter
 from dataset_resolver import StaticDatasetResolver
 from domo_auth import get_domo_access_token
-from calc_field_translator import qs_calc_to_beast_mode
 import base64
 from domo_client import DomoClient
 
@@ -88,11 +87,6 @@ class CreateDomoCardRequest(BaseModel):
 
 class DomoDatasetDetailRequest(BaseModel):
     dataset_id: str
-
-class UpdateDomoFormulasRequest(BaseModel):
-    unified_schema: Dict[str, Any]
-    dataset_mapping: Dict[str, str]
-
 
 # ==================== AWS HELPER ====================
 
@@ -1032,87 +1026,6 @@ def get_domo_client() -> DomoClient:
     return DomoClient(base_url=base_url, headers=headers)
 
 
-def build_formula_payload(calc_fields: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Build Domo dataset formula payload (dsUpdated) from unified calc fields.
-    """
-    ds_updated = []
-    for cf in calc_fields:
-        calc_type = cf.get("calculationType") or "ROW"
-        row_expr = cf.get("row")
-        agg_expr = cf.get("aggregate")
-
-        beast = qs_calc_to_beast_mode({
-            "calculationType": calc_type,
-            "row": row_expr,
-            "aggregate": agg_expr
-        })
-
-        ds_updated.append({
-            "name": cf.get("name"),
-            "formula": beast["beast_sql"],
-            "dataType": "STRING",
-            "persistedOnDataSource": True,
-            "isCalculation": True
-        })
-
-    return {
-        "formulas": {
-            "dsUpdated": ds_updated,
-            "dsDeleted": [],
-            "card": []
-        }
-    }
-
-
-def build_auto_cast_formulas(calc_fields: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Build row-level CAST formulas for aggregate calc fields like AVG({col}).
-    These formulas are referenced by the adapter as __q2d_num_<col>.
-    """
-    results: Dict[str, Dict[str, Any]] = {}
-    for cf in calc_fields:
-        calc_type = str(cf.get("calculationType") or "").upper()
-        if calc_type != "AGGREGATE":
-            continue
-        agg_expr = cf.get("aggregate")
-        if not agg_expr or not isinstance(agg_expr, str):
-            continue
-
-        upper = agg_expr.strip().upper()
-        # Only cast for numeric aggregations
-        if not (upper.startswith("SUM(") or upper.startswith("AVG(") or upper.startswith("MIN(") or upper.startswith("MAX(")):
-            continue
-
-        inner = agg_expr.strip()
-        # Extract inner column between parentheses
-        open_idx = inner.find("(")
-        close_idx = inner.rfind(")")
-        if open_idx == -1 or close_idx == -1:
-            continue
-        col = inner[open_idx + 1:close_idx].strip()
-        if col.startswith("{") and col.endswith("}"):
-            col = col[1:-1].strip()
-        # Skip complex expressions
-        if any(op in col for op in ["+", "-", "*", "/", "(", ")"]):
-            continue
-
-        formula_name = f"__q2d_num_{col}"
-        # Avoid duplicates
-        if formula_name in results:
-            continue
-
-        results[formula_name] = {
-            "name": formula_name,
-            "formula": f'CAST(\"{col}\" AS DECIMAL)',
-            "dataType": "DECIMAL",
-            "persistedOnDataSource": True,
-            "isCalculation": True
-        }
-
-    return list(results.values())
-
-
 @app.post("/api/domo/create-card")
 def create_domo_card(payload: CreateDomoCardRequest):
     """
@@ -1321,86 +1234,6 @@ def domo_dataset_detail(payload: DomoDatasetDetailRequest):
             status_code=500,
             detail={
                 "error": "Domo dataset detail failed",
-                "message": str(e)
-            }
-        )
-
-
-# ==================== DOMO FORMULAS (DATASET) ====================
-
-@app.post("/api/domo/update-dataset-formulas")
-def update_domo_dataset_formulas(payload: UpdateDomoFormulasRequest):
-    """
-    Apply QuickSight calculated fields as Domo dataset formulas.
-    Must run before card creation.
-    """
-    try:
-        unified = payload.unified_schema
-        dataset_mapping = payload.dataset_mapping
-
-        calc_fields = unified.get("calculatedFields", [])
-        if not calc_fields:
-            return {
-                "status": "success",
-                "message": "No calculated fields to apply",
-                "results": []
-            }
-
-        # Group calc fields by datasetRef
-        grouped: Dict[str, List[Dict[str, Any]]] = {}
-        for cf in calc_fields:
-            ds_ref = cf.get("datasetRef")
-            if not ds_ref:
-                continue
-            grouped.setdefault(ds_ref, []).append(cf)
-
-        domo = get_domo_client()
-        results = []
-
-        for ds_ref, fields in grouped.items():
-            domo_dataset_id = dataset_mapping.get(ds_ref)
-            if not domo_dataset_id:
-                results.append({
-                    "datasetRef": ds_ref,
-                    "status": "skipped",
-                    "reason": "No Domo dataset mapping"
-                })
-                continue
-            row_fields = [f for f in fields if str(f.get("calculationType") or "").upper() == "ROW"]
-            auto_casts = build_auto_cast_formulas(fields)
-            if not row_fields and not auto_casts:
-                results.append({
-                    "datasetRef": ds_ref,
-                    "domoDatasetId": domo_dataset_id,
-                    "status": "skipped",
-                    "reason": "No row-level calculated fields"
-                })
-                continue
-
-            formula_payload = build_formula_payload(row_fields)
-            if auto_casts:
-                formula_payload["formulas"]["dsUpdated"].extend(auto_casts)
-            domo.update_dataset_formulas(domo_dataset_id, formula_payload)
-
-            results.append({
-                "datasetRef": ds_ref,
-                "domoDatasetId": domo_dataset_id,
-                "status": "applied",
-                "count": len(row_fields) + len(auto_casts)
-            })
-
-        return {
-            "status": "success",
-            "results": results
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "Failed to update dataset formulas",
                 "message": str(e)
             }
         )
