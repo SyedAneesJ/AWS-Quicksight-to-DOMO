@@ -1318,15 +1318,24 @@ def update_domo_dataset_formulas(payload: UpdateDomoFormulasRequest):
                     "reason": "No Domo dataset mapping"
                 })
                 continue
+            row_fields = [f for f in fields if str(f.get("calculationType") or "").upper() == "ROW"]
+            if not row_fields:
+                results.append({
+                    "datasetRef": ds_ref,
+                    "domoDatasetId": domo_dataset_id,
+                    "status": "skipped",
+                    "reason": "No row-level calculated fields"
+                })
+                continue
 
-            formula_payload = build_formula_payload(fields)
+            formula_payload = build_formula_payload(row_fields)
             domo.update_dataset_formulas(domo_dataset_id, formula_payload)
 
             results.append({
                 "datasetRef": ds_ref,
                 "domoDatasetId": domo_dataset_id,
                 "status": "applied",
-                "count": len(fields)
+                "count": len(row_fields)
             })
 
         return {
@@ -1457,6 +1466,7 @@ def transform_to_domo_configs(payload: TransformToDomoRequest):
 
         resolver = StaticDatasetResolver(dataset_mapping)
         adapter = DomoAdapter(domo_client=None, dataset_resolver=resolver, column_mapping={})
+        adapter._process_calculated_fields(unified.get("calculatedFields", []))
 
         card_configs = []
         errors = []

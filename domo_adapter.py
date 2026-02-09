@@ -1,5 +1,6 @@
 # domo_adapter.py - FINAL FIXED VERSION
 from typing import Dict, Any
+import re
 from calc_field_translator import qs_to_beast_mode_sql
 
 class DomoAdapter:
@@ -8,6 +9,7 @@ class DomoAdapter:
         self.dataset_resolver = dataset_resolver
         self.column_mapping = column_mapping or {}
         self.calculated_fields_map = {}
+        self.calc_fields = {}
 
     #check if x-axis is a date or not - used for line chart (domo not allowing to create x-axis which is not date/time)
     def _is_time_column(self, column_name: str) -> bool:
@@ -59,14 +61,59 @@ class DomoAdapter:
     def _process_calculated_fields(self, calculated_fields):
         for cf in calculated_fields:
             name = cf.get("name")
-            expression = cf.get("expression")
-            
-            beast_mode_sql = qs_to_beast_mode_sql(expression)
-            
-            self.calculated_fields_map[name] = {
-                "original_expression": expression,
-                "beast_mode_sql": beast_mode_sql
+            if not name:
+                continue
+
+            calc_type = cf.get("calculationType") or "ROW"
+            expression = cf.get("expression") or cf.get("row")
+            aggregate = cf.get("aggregate")
+
+            self.calc_fields[name] = {
+                "calculationType": calc_type,
+                "expression": expression,
+                "row": cf.get("row"),
+                "aggregate": aggregate,
+                "datasetRef": cf.get("datasetRef")
             }
+
+            if calc_type == "ROW" and expression:
+                beast_mode_sql = qs_to_beast_mode_sql(expression)
+                self.calculated_fields_map[name] = {
+                    "original_expression": expression,
+                    "beast_mode_sql": beast_mode_sql
+                }
+
+    def _resolve_calc_measure(self, column_name: str, aggregation: str):
+        """
+        If measure column is a calculated field with AGGREGATE type like AVG({col}),
+        rewrite to base column + aggregation. Otherwise, return original.
+        """
+        cf = self.calc_fields.get(column_name)
+        if not cf:
+            return column_name, aggregation
+
+        calc_type = str(cf.get("calculationType") or "").upper()
+        if calc_type == "ROW":
+            return column_name, aggregation
+
+        agg_expr = cf.get("aggregate")
+        if not agg_expr or not isinstance(agg_expr, str):
+            return column_name, aggregation
+
+        match = re.match(r"^([A-Z_]+)\\((.+)\\)$", agg_expr.strip(), re.IGNORECASE)
+        if not match:
+            return column_name, aggregation
+
+        func = match.group(1).upper()
+        inner = match.group(2).strip()
+
+        if inner.startswith("{") and inner.endswith("}"):
+            inner = inner[1:-1].strip()
+
+        if any(op in inner for op in ["+", "-", "*", "/", "(", ")"]):
+            return column_name, aggregation
+
+        return inner, func
 
     def _map_column(self, column_name):
         return self.column_mapping.get(column_name, column_name)
@@ -157,8 +204,11 @@ class DomoAdapter:
         dataset_id = self.dataset_resolver.resolve(visual["datasetRef"])
         m = visual["measures"][0]
 
-        column_name = self._map_column(m["column"])
-        aggregation = self._normalize_aggregation(m["aggregation"])
+        raw_col = m["column"]
+        raw_agg = self._normalize_aggregation(m["aggregation"])
+        resolved_col, resolved_agg = self._resolve_calc_measure(raw_col, raw_agg)
+        column_name = self._map_column(resolved_col)
+        aggregation = self._normalize_aggregation(resolved_agg)
 
         return {
             "definition": {
@@ -197,8 +247,11 @@ class DomoAdapter:
         m = visual["measures"][0]
 
         x_mapped = self._map_column(x)
-        column_name = self._map_column(m["column"])
-        aggregation = self._normalize_aggregation(m["aggregation"])
+        raw_col = m["column"]
+        raw_agg = self._normalize_aggregation(m["aggregation"])
+        resolved_col, resolved_agg = self._resolve_calc_measure(raw_col, raw_agg)
+        column_name = self._map_column(resolved_col)
+        aggregation = self._normalize_aggregation(resolved_agg)
         
         x_title = x_mapped.replace("_", " ").title()
         y_title = f"{aggregation} of {column_name}".replace("_", " ").title()
@@ -255,8 +308,11 @@ class DomoAdapter:
         
         x_mapped = self._map_column(x)
         stack_mapped = self._map_column(stack)
-        column_name = self._map_column(m["column"])
-        aggregation = self._normalize_aggregation(m["aggregation"])
+        raw_col = m["column"]
+        raw_agg = self._normalize_aggregation(m["aggregation"])
+        resolved_col, resolved_agg = self._resolve_calc_measure(raw_col, raw_agg)
+        column_name = self._map_column(resolved_col)
+        aggregation = self._normalize_aggregation(resolved_agg)
 
         x_title = x_mapped.replace("_", " ").title()
         y_title = f"{aggregation} of {column_name}".replace("_", " ")
@@ -335,8 +391,11 @@ class DomoAdapter:
 
         # -------- MEASURE --------
         m = visual["measures"][0]
-        val_col = self._map_column(m["column"])
-        aggregation = self._normalize_aggregation(m.get("aggregation", "SUM"))
+        raw_col = m["column"]
+        raw_agg = self._normalize_aggregation(m.get("aggregation", "SUM"))
+        resolved_col, resolved_agg = self._resolve_calc_measure(raw_col, raw_agg)
+        val_col = self._map_column(resolved_col)
+        aggregation = self._normalize_aggregation(resolved_agg)
 
         # -------- CHECK FOR MULTI-LINE (SERIES) --------
         stack_fields = visual.get("stack", [])
@@ -491,7 +550,11 @@ class DomoAdapter:
                 })
 
             elif col["type"] == "MEASURE":
-                aggregation = self._normalize_aggregation(col["aggregation"])
+                raw_col = col["field"]
+                raw_agg = self._normalize_aggregation(col["aggregation"])
+                resolved_col, resolved_agg = self._resolve_calc_measure(raw_col, raw_agg)
+                column_name = self._map_column(resolved_col)
+                aggregation = self._normalize_aggregation(resolved_agg)
                 columns.append({
                     "column": column_name,
                     "aggregation": aggregation,
@@ -530,8 +593,11 @@ class DomoAdapter:
         m = visual["measures"][0]
 
         x_mapped = self._map_column(x)
-        column_name = self._map_column(m["column"])
-        aggregation = self._normalize_aggregation(m["aggregation"])
+        raw_col = m["column"]
+        raw_agg = self._normalize_aggregation(m["aggregation"])
+        resolved_col, resolved_agg = self._resolve_calc_measure(raw_col, raw_agg)
+        column_name = self._map_column(resolved_col)
+        aggregation = self._normalize_aggregation(resolved_agg)
 
         return {
             "definition": {
@@ -590,8 +656,11 @@ class DomoAdapter:
         calendar_column = calendar_column_map.get(time_grain, "CalendarDay")
 
         measure = visual["measures"][0]
-        value_col = self._map_column(measure["column"])
-        aggregation = self._normalize_aggregation(measure["aggregation"])
+        raw_col = measure["column"]
+        raw_agg = self._normalize_aggregation(measure["aggregation"])
+        resolved_col, resolved_agg = self._resolve_calc_measure(raw_col, raw_agg)
+        value_col = self._map_column(resolved_col)
+        aggregation = self._normalize_aggregation(resolved_agg)
 
         stack_col = self._map_column(visual["stack"][0])
 
@@ -695,8 +764,11 @@ class DomoAdapter:
         m = visual["measures"][0]
 
         category_mapped = self._map_column(category)
-        column_name = self._map_column(m["column"])
-        aggregation = self._normalize_aggregation(m["aggregation"])
+        raw_col = m["column"]
+        raw_agg = self._normalize_aggregation(m["aggregation"])
+        resolved_col, resolved_agg = self._resolve_calc_measure(raw_col, raw_agg)
+        column_name = self._map_column(resolved_col)
+        aggregation = self._normalize_aggregation(resolved_agg)
 
         return {
             "definition": {
@@ -747,10 +819,14 @@ class DomoAdapter:
         if not x_measure or not y_measure:
             raise ValueError("Scatter/Bubble chart requires both X and Y axis measures")
         
-        x_col = self._map_column(x_measure["column"])
-        y_col = self._map_column(y_measure["column"])
-        x_agg = self._normalize_aggregation(x_measure["aggregation"])
-        y_agg = self._normalize_aggregation(y_measure["aggregation"])
+        x_raw_col, x_raw_agg = x_measure["column"], self._normalize_aggregation(x_measure["aggregation"])
+        y_raw_col, y_raw_agg = y_measure["column"], self._normalize_aggregation(y_measure["aggregation"])
+        x_resolved_col, x_resolved_agg = self._resolve_calc_measure(x_raw_col, x_raw_agg)
+        y_resolved_col, y_resolved_agg = self._resolve_calc_measure(y_raw_col, y_raw_agg)
+        x_col = self._map_column(x_resolved_col)
+        y_col = self._map_column(y_resolved_col)
+        x_agg = self._normalize_aggregation(x_resolved_agg)
+        y_agg = self._normalize_aggregation(y_resolved_agg)
         
         x_title = visual.get("axes", {}).get("x", {}).get("title", None)
         y_title = visual.get("axes", {}).get("y", {}).get("title", None)
@@ -787,8 +863,11 @@ class DomoAdapter:
                 })
         
         if size_measure and visual["type"].upper() == "BUBBLE":
-            size_col = self._map_column(size_measure["column"])
-            size_agg = self._normalize_aggregation(size_measure["aggregation"])
+            size_raw_col = size_measure["column"]
+            size_raw_agg = self._normalize_aggregation(size_measure["aggregation"])
+            size_resolved_col, size_resolved_agg = self._resolve_calc_measure(size_raw_col, size_raw_agg)
+            size_col = self._map_column(size_resolved_col)
+            size_agg = self._normalize_aggregation(size_resolved_agg)
             columns.append({
                 "column": size_col,
                 "mapping": "BUBBLESIZE",
@@ -888,8 +967,11 @@ class DomoAdapter:
         m = visual["measures"][0]
 
         category_mapped = self._map_column(category)
-        column_name = self._map_column(m["column"])
-        aggregation = self._normalize_aggregation(m["aggregation"])
+        raw_col = m["column"]
+        raw_agg = self._normalize_aggregation(m["aggregation"])
+        resolved_col, resolved_agg = self._resolve_calc_measure(raw_col, raw_agg)
+        column_name = self._map_column(resolved_col)
+        aggregation = self._normalize_aggregation(resolved_agg)
 
         return {
             "definition": {
@@ -950,11 +1032,17 @@ class DomoAdapter:
             raise ValueError("COMBO requires at least one BAR and one LINE measure")
 
         # Resolve columns
-        bar_col = self._map_column(bar_measures[0]["column"])
-        bar_agg = self._normalize_aggregation(bar_measures[0]["aggregation"])
+        bar_raw_col = bar_measures[0]["column"]
+        bar_raw_agg = self._normalize_aggregation(bar_measures[0]["aggregation"])
+        bar_resolved_col, bar_resolved_agg = self._resolve_calc_measure(bar_raw_col, bar_raw_agg)
+        bar_col = self._map_column(bar_resolved_col)
+        bar_agg = self._normalize_aggregation(bar_resolved_agg)
 
-        line_col = self._map_column(line_measures[0]["column"])
-        line_agg = self._normalize_aggregation(line_measures[0]["aggregation"])
+        line_raw_col = line_measures[0]["column"]
+        line_raw_agg = self._normalize_aggregation(line_measures[0]["aggregation"])
+        line_resolved_col, line_resolved_agg = self._resolve_calc_measure(line_raw_col, line_raw_agg)
+        line_col = self._map_column(line_resolved_col)
+        line_agg = self._normalize_aggregation(line_resolved_agg)
 
         series_col = self._map_column(series_list[0]) if series_list else None
 
