@@ -49,21 +49,25 @@ class AWSCredentials(BaseModel):
     aws_account_id: str
     region: str
     role_arn: str
+    external_id: Optional[str] = None
 
 class ListDashboardsRequest(BaseModel):
     aws_account_id: str
     region: str
     role_arn: str
+    external_id: Optional[str] = None
 
 class ListDataSetsRequest(BaseModel):
     aws_account_id: str
     region: str
     role_arn: str
+    external_id: Optional[str] = None
 
 class DescribeDataSetRequest(BaseModel):
     aws_account_id: str
     region: str
     role_arn: str
+    external_id: Optional[str] = None
     dataset_id: Optional[str] = None
     dataset_arn: Optional[str] = None
 
@@ -71,6 +75,7 @@ class ExtractDashboardRequest(BaseModel):
     aws_account_id: str
     region: str
     role_arn: str
+    external_id: Optional[str] = None
     dashboard_id: str
 
 class ConvertToUnifiedRequest(BaseModel):
@@ -99,6 +104,7 @@ class DescribeDataSetWithSourceRequest(BaseModel):
     aws_account_id: str
     region: str
     role_arn: str
+    external_id: Optional[str] = None
     dataset_id: Optional[str] = None
     dataset_arn: Optional[str] = None
 
@@ -144,7 +150,7 @@ def format_datasource_display(datasource_info: dict) -> str:
         return f"{ds_type}: {datasource_info.get('name', 'Unknown')}"
         
 
-def get_quicksight_client(role_arn: str, region: str):
+def get_quicksight_client(role_arn: str, region: str, external_id: Optional[str] = None):
     """
     Returns a properly authenticated QuickSight client
     """
@@ -154,11 +160,15 @@ def get_quicksight_client(role_arn: str, region: str):
         
         # Assume the role
         print(f"🔑 Assuming role: {role_arn}")
-        assumed = sts.assume_role(
-            RoleArn=role_arn,
-            RoleSessionName="domo-quicksight-session",
-            DurationSeconds=3600
-        )
+        assume_kwargs = {
+            "RoleArn": role_arn,
+            "RoleSessionName": "domo-quicksight-session",
+            "DurationSeconds": 3600
+        }
+        if external_id:
+            assume_kwargs["ExternalId"] = external_id
+
+        assumed = sts.assume_role(**assume_kwargs)
         
         # Extract credentials
         creds = assumed["Credentials"]
@@ -437,7 +447,7 @@ def validate_aws(payload: dict):
         print(f"Role ARN: {role_arn}")
 
         # Get QuickSight client (this will fail if role can't be assumed)
-        qs = get_quicksight_client(role_arn, region)
+        qs = get_quicksight_client(role_arn, region, payload.get("external_id"))
 
         # Test with a simple API call
         response = qs.list_dashboards(
@@ -478,7 +488,7 @@ def list_quicksight_dashboards(payload: ListDashboardsRequest):
         print(f"📊 LISTING QUICKSIGHT DASHBOARDS")
         print(f"{'='*60}")
         
-        qs = get_quicksight_client(payload.role_arn, payload.region)
+        qs = get_quicksight_client(payload.role_arn, payload.region, payload.external_id)
         
         response = qs.list_dashboards(AwsAccountId=payload.aws_account_id)
         
@@ -527,7 +537,7 @@ def list_quicksight_datasets(payload: ListDataSetsRequest):
         print(f"📊 LISTING QUICKSIGHT DATASETS - ENHANCED VERSION")
         print(f"{'='*60}")
         
-        qs = get_quicksight_client(payload.role_arn, payload.region)
+        qs = get_quicksight_client(payload.role_arn, payload.region, payload.external_id)
         response = qs.list_data_sets(AwsAccountId=payload.aws_account_id)
         
         datasets = []
@@ -757,7 +767,7 @@ def describe_quicksight_dataset(payload: DescribeDataSetRequest):
                 }
             )
 
-        qs = get_quicksight_client(payload.role_arn, payload.region)
+        qs = get_quicksight_client(payload.role_arn, payload.region, payload.external_id)
         dataset_detail = qs.describe_data_set(
             AwsAccountId=payload.aws_account_id,
             DataSetId=dataset_id
@@ -809,7 +819,7 @@ def extract_dashboard(payload: ExtractDashboardRequest):
         print(f"{'='*60}")
         print(f"Dashboard ID: {payload.dashboard_id}")
         
-        qs = get_quicksight_client(payload.role_arn, payload.region)
+        qs = get_quicksight_client(payload.role_arn, payload.region, payload.external_id)
         
         response = qs.describe_dashboard_definition(
             AwsAccountId=payload.aws_account_id,
@@ -1476,7 +1486,7 @@ def describe_dataset_with_source(payload: DescribeDataSetWithSourceRequest):
         print(f"{'='*60}")
         
         # Get QuickSight client
-        qs = get_quicksight_client(payload.role_arn, payload.region)
+        qs = get_quicksight_client(payload.role_arn, payload.region, payload.external_id)
         
         # Determine dataset ID
         if payload.dataset_id:
@@ -1577,7 +1587,7 @@ def list_datasets_with_sources(payload: ListDataSetsRequest):
         print(f"{'='*60}")
         
         # Get QuickSight client
-        qs = get_quicksight_client(payload.role_arn, payload.region)
+        qs = get_quicksight_client(payload.role_arn, payload.region, payload.external_id)
         
         # List datasets
         print(f"Listing datasets for account: {payload.aws_account_id}")
