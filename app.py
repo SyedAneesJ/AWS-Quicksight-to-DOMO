@@ -1258,7 +1258,7 @@ def domo_dataset_detail(payload: DomoDatasetDetailRequest):
 
         dataset_id = payload.dataset_id
         details_url = f"{base_url.rstrip('/')}/api/data/v3/datasources/{dataset_id}?includeAllDetails=true&includePrivate=true"
-        schema_url = f"{base_url.rstrip('/')}/api/query/v1/datasources/{dataset_id}/schema/indexed?options=INCLUDE_DATA_CONTROL_COLUMN_DETAILS"
+        schema_url = f"https://api.domo.com/v1/datasets/{dataset_id}/schema"
 
         details_resp = requests.get(details_url, headers=headers)
         if details_resp.status_code != 200:
@@ -1840,7 +1840,7 @@ def validate_mapping(payload: ValidateMappingRequest):
         }
 
         dataset_id = payload.domo_dataset_id
-        schema_url = f"{base_url.rstrip('/')}/api/query/v1/datasources/{dataset_id}/schema/indexed?options=INCLUDE_DATA_CONTROL_COLUMN_DETAILS"
+        schema_url = f"https://api.domo.com/v1/datasets/{dataset_id}/schema"
 
         schema_resp = requests.get(schema_url, headers=headers)
         if schema_resp.status_code != 200:
