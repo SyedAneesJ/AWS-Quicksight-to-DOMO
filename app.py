@@ -24,7 +24,6 @@ from domo_client import DomoClient
 
 from datasource_inspector import DataSourceInspector, extract_datasource_metadata
 from dataset_registry import DatasetRegistry
-from schema_validator import SchemaValidator
 
 app = FastAPI(title="QuickSight to Domo Migration API")
 
@@ -114,10 +113,6 @@ class SuggestMatchRequest(BaseModel):
     qs_dataset_id: str
     domo_datasets: List[Dict[str, Any]]
 
-class ValidateMappingRequest(BaseModel):
-    qs_columns: List[str]
-    domo_dataset_id: str
-    required_columns: List[str]
 
 
 # ==================== AWS HELPER ====================
@@ -1800,83 +1795,6 @@ def suggest_domo_match(payload: SuggestMatchRequest):
             }
         )
 
-
-@app.post("/api/datasets/validate-mapping")
-def validate_mapping(payload: ValidateMappingRequest):
-    """
-    Validate that QS → Domo dataset mapping is compatible
-    """
-    try:
-        # Fetch Domo dataset schema via existing endpoint logic
-        base_url = (
-            os.environ.get("DOMO_BASE_URL")
-            or os.environ.get("DOMO_INSTANCE_URL")
-            or os.environ.get("DOMO_INSTANCE")
-        )
-        if not base_url:
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "error": "Domo config missing",
-                    "message": "Set DOMO_BASE_URL"
-                }
-            )
-
-        client_id = os.environ.get("DOMO_CLIENT_ID")
-        client_secret = os.environ.get("DOMO_CLIENT_SECRET")
-        if not client_id or not client_secret:
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "error": "Domo credentials missing",
-                    "message": "Set DOMO_CLIENT_ID and DOMO_CLIENT_SECRET in backend env"
-                }
-            )
-
-        token = get_domo_access_token(client_id, client_secret)
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
-
-        dataset_id = payload.domo_dataset_id
-        schema_url = f"https://api.domo.com/v1/datasets/{dataset_id}/schema"
-
-        schema_resp = requests.get(schema_url, headers=headers)
-        if schema_resp.status_code != 200:
-            raise HTTPException(
-                status_code=schema_resp.status_code,
-                detail={
-                    "error": "Failed to fetch dataset schema",
-                    "message": schema_resp.text
-                }
-            )
-
-        schema_json = schema_resp.json()
-        schema_columns = schema_json.get("columns", [])
-
-        validator = SchemaValidator()
-        result = validator.validate_mapping(
-            qs_dataset_columns=payload.qs_columns,
-            domo_schema_columns=schema_columns,
-            required_columns=payload.required_columns
-        )
-
-        return {
-            "status": "success",
-            "validation": result
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "Dataset mapping validation failed",
-                "message": str(e)
-            }
-        )
 
 # ==================== MAIN ====================
 
