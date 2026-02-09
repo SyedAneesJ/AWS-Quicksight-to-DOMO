@@ -1065,6 +1065,54 @@ def build_formula_payload(calc_fields: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def build_auto_cast_formulas(calc_fields: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Build row-level CAST formulas for aggregate calc fields like AVG({col}).
+    These formulas are referenced by the adapter as __q2d_num_<col>.
+    """
+    results: Dict[str, Dict[str, Any]] = {}
+    for cf in calc_fields:
+        calc_type = str(cf.get("calculationType") or "").upper()
+        if calc_type != "AGGREGATE":
+            continue
+        agg_expr = cf.get("aggregate")
+        if not agg_expr or not isinstance(agg_expr, str):
+            continue
+
+        upper = agg_expr.strip().upper()
+        # Only cast for numeric aggregations
+        if not (upper.startswith("SUM(") or upper.startswith("AVG(") or upper.startswith("MIN(") or upper.startswith("MAX(")):
+            continue
+
+        inner = agg_expr.strip()
+        # Extract inner column between parentheses
+        open_idx = inner.find("(")
+        close_idx = inner.rfind(")")
+        if open_idx == -1 or close_idx == -1:
+            continue
+        col = inner[open_idx + 1:close_idx].strip()
+        if col.startswith("{") and col.endswith("}"):
+            col = col[1:-1].strip()
+        # Skip complex expressions
+        if any(op in col for op in ["+", "-", "*", "/", "(", ")"]):
+            continue
+
+        formula_name = f"__q2d_num_{col}"
+        # Avoid duplicates
+        if formula_name in results:
+            continue
+
+        results[formula_name] = {
+            "name": formula_name,
+            "formula": f'CAST(\"{col}\" AS DECIMAL)',
+            "dataType": "DECIMAL",
+            "persistedOnDataSource": True,
+            "isCalculation": True
+        }
+
+    return list(results.values())
+
+
 @app.post("/api/domo/create-card")
 def create_domo_card(payload: CreateDomoCardRequest):
     """
@@ -1319,7 +1367,8 @@ def update_domo_dataset_formulas(payload: UpdateDomoFormulasRequest):
                 })
                 continue
             row_fields = [f for f in fields if str(f.get("calculationType") or "").upper() == "ROW"]
-            if not row_fields:
+            auto_casts = build_auto_cast_formulas(fields)
+            if not row_fields and not auto_casts:
                 results.append({
                     "datasetRef": ds_ref,
                     "domoDatasetId": domo_dataset_id,
@@ -1329,13 +1378,15 @@ def update_domo_dataset_formulas(payload: UpdateDomoFormulasRequest):
                 continue
 
             formula_payload = build_formula_payload(row_fields)
+            if auto_casts:
+                formula_payload["formulas"]["dsUpdated"].extend(auto_casts)
             domo.update_dataset_formulas(domo_dataset_id, formula_payload)
 
             results.append({
                 "datasetRef": ds_ref,
                 "domoDatasetId": domo_dataset_id,
                 "status": "applied",
-                "count": len(row_fields)
+                "count": len(row_fields) + len(auto_casts)
             })
 
         return {

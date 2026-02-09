@@ -113,6 +113,9 @@ class DomoAdapter:
         if any(op in inner for op in ["+", "-", "*", "/", "(", ")"]):
             return column_name, aggregation
 
+        if func in ["SUM", "AVG", "MIN", "MAX"]:
+            return f"__q2d_num_{inner}", func
+
         return inner, func
 
     def _map_column(self, column_name):
@@ -159,6 +162,14 @@ class DomoAdapter:
         """Check if a column is a date field"""
         date_keywords = ["date", "time", "timestamp", "datetime", "day", "month", "year"]
         return any(keyword in column_name.lower() for keyword in date_keywords)
+
+    def _extract_x_column_and_grain(self, x_entry):
+        """
+        Normalize x-axis entry into (column, time_grain or None).
+        """
+        if isinstance(x_entry, dict):
+            return x_entry.get("column"), x_entry.get("timeGrain")
+        return x_entry, None
 
 
     def _deploy_visual(self, page_id: str, visual: dict):
@@ -589,15 +600,23 @@ class DomoAdapter:
 
     def _build_area_payload(self, visual: dict):
         dataset_id = self.dataset_resolver.resolve(visual["datasetRef"])
-        x = visual["x"][0]
+        x_entry = visual["x"][0]
         m = visual["measures"][0]
 
-        x_mapped = self._map_column(x)
+        x_col, time_grain = self._extract_x_column_and_grain(x_entry)
+        x_mapped = self._map_column(x_col)
         raw_col = m["column"]
         raw_agg = self._normalize_aggregation(m["aggregation"])
         resolved_col, resolved_agg = self._resolve_calc_measure(raw_col, raw_agg)
         column_name = self._map_column(resolved_col)
         aggregation = self._normalize_aggregation(resolved_agg)
+
+        date_grain = None
+        if time_grain and self._is_date_column(x_mapped):
+            date_grain = {
+                "column": x_mapped,
+                "dateTimeElement": self._map_time_grain_to_domo(time_grain)
+            }
 
         return {
             "definition": {
@@ -620,7 +639,8 @@ class DomoAdapter:
                         "groupBy": [
                             {"column": x_mapped}
                         ],
-                        "distinct": False
+                        "distinct": False,
+                        **({"dateGrain": date_grain} if date_grain else {})
                     }
                 },
                 "charts": {
@@ -640,20 +660,8 @@ class DomoAdapter:
         dataset_id = self.dataset_resolver.resolve(visual["datasetRef"])
 
         x_entry = visual["x"][0]
-        x_col = self._map_column(x_entry["column"])
-        time_grain = x_entry.get("timeGrain", "DAY")
-
-        domo_grain = self._map_time_grain_to_domo(time_grain)
-
-        calendar_column_map = {
-            "DAY": "CalendarDay",
-            "WEEK": "CalendarWeek",
-            "MONTH": "CalendarMonth",
-            "QUARTER": "CalendarQuarter",
-            "YEAR": "CalendarYear"
-        }
-
-        calendar_column = calendar_column_map.get(time_grain, "CalendarDay")
+        x_col, time_grain = self._extract_x_column_and_grain(x_entry)
+        x_mapped = self._map_column(x_col)
 
         measure = visual["measures"][0]
         raw_col = measure["column"]
@@ -664,13 +672,19 @@ class DomoAdapter:
 
         stack_col = self._map_column(visual["stack"][0])
 
+        date_grain = None
+        if time_grain and self._is_date_column(x_mapped):
+            date_grain = {
+                "column": x_mapped,
+                "dateTimeElement": self._map_time_grain_to_domo(time_grain)
+            }
+
         main_subscription = {
             "name": "main",
             "dataSourceId": dataset_id,
             "columns": [
                 {
-                    "column": calendar_column,
-                    "calendar": True,
+                    "column": x_mapped,
                     "mapping": "ITEM"
                 },
                 {
@@ -687,17 +701,13 @@ class DomoAdapter:
             "orderBy": [],
             "groupBy": [
                 {
-                    "column": calendar_column,
-                    "calendar": True
+                    "column": x_mapped
                 },
                 {
                     "column": stack_col
                 }
             ],
-            "dateGrain": {
-                "column": x_col,
-                "dateTimeElement": domo_grain
-            },
+            **({"dateGrain": date_grain} if date_grain else {}),
             "fiscal": False,
             "projection": False,
             "distinct": False
