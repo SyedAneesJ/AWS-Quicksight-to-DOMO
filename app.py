@@ -22,7 +22,14 @@ from domo_auth import get_domo_access_token
 import base64
 from domo_client import DomoClient
 
+from datasource_inspector import DataSourceInspector, extract_datasource_metadata
+from dataset_registry import DatasetRegistry
+from schema_validator import SchemaValidator
+
 app = FastAPI(title="QuickSight to Domo Migration API")
+
+# Dataset registry for datasource-aware mapping
+dataset_registry = DatasetRegistry(storage_path="dataset_mappings.json")
 
 # ==================== CORS ====================
 app.add_middleware(
@@ -88,7 +95,59 @@ class CreateDomoCardRequest(BaseModel):
 class DomoDatasetDetailRequest(BaseModel):
     dataset_id: str
 
+class DescribeDataSetWithSourceRequest(BaseModel):
+    """Enhanced dataset description request that includes datasource info"""
+    aws_account_id: str
+    region: str
+    role_arn: str
+    dataset_id: Optional[str] = None
+    dataset_arn: Optional[str] = None
+
+class RegisterDatasetRequest(BaseModel):
+    qs_dataset_id: str
+    qs_dataset_name: str
+    datasource_type: str
+    connection_properties: Dict[str, Any]
+    domo_dataset_id: Optional[str] = None
+
+class SuggestMatchRequest(BaseModel):
+    qs_dataset_id: str
+    domo_datasets: List[Dict[str, Any]]
+
+class ValidateMappingRequest(BaseModel):
+    qs_columns: List[str]
+    domo_dataset_id: str
+    required_columns: List[str]
+
+
 # ==================== AWS HELPER ====================
+
+def format_datasource_display(datasource_info: dict) -> str:
+    """
+    Format datasource info for display in logs/UI
+    
+    Args:
+        datasource_info: Datasource info dict
+    
+    Returns:
+        Formatted string
+    """
+    ds_type = datasource_info.get('type', 'UNKNOWN')
+    props = datasource_info.get('connection_properties', {})
+    
+    if ds_type == 'SNOWFLAKE':
+        return f"Snowflake: {props.get('database')}.{props.get('schema')}.{props.get('table')}"
+    elif ds_type == 'REDSHIFT':
+        return f"Redshift: {props.get('database')}.{props.get('schema')}.{props.get('table')}"
+    elif ds_type in ['POSTGRES', 'MYSQL', 'MARIADB']:
+        return f"{ds_type}: {props.get('database')}.{props.get('table')}"
+    elif ds_type == 'S3':
+        return f"S3: {datasource_info.get('name', 'Unknown')}"
+    elif ds_type == 'ATHENA':
+        return f"Athena: {props.get('database')}.{props.get('schema')}.{props.get('table')}"
+    else:
+        return f"{ds_type}: {datasource_info.get('name', 'Unknown')}"
+        
 
 def get_quicksight_client(role_arn: str, region: str):
     """
@@ -1401,6 +1460,421 @@ def transform_to_domo_configs(payload: TransformToDomoRequest):
             detail={
                 "error": "Transformation to Domo configs failed",
                 "message": error_msg
+            }
+        )
+
+@app.post("/api/quicksight/describe-dataset-with-source")
+def describe_dataset_with_source(payload: DescribeDataSetWithSourceRequest):
+    """
+    ✅ PHASE 1: Enhanced dataset description that includes datasource metadata
+    
+    This endpoint extends the existing describe-dataset to also extract:
+    - Datasource type (Snowflake, Redshift, S3, etc.)
+    - Connection properties (database, schema, table, warehouse)
+    - Datasource name and ID
+    
+    Use this for the Dataset Mapping step to show datasource information
+    """
+    try:
+        print(f"\n{'='*60}")
+        print(f"🔍 DESCRIBE DATASET WITH SOURCE")
+        print(f"{'='*60}")
+        
+        # Get QuickSight client
+        qs = get_quicksight_client(payload.role_arn, payload.region)
+        
+        # Determine dataset ID
+        if payload.dataset_id:
+            dataset_id = payload.dataset_id
+        elif payload.dataset_arn:
+            dataset_id = payload.dataset_arn.split('/')[-1]
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "Either dataset_id or dataset_arn is required"}
+            )
+        
+        print(f"Dataset ID: {dataset_id}")
+        
+        # Describe the dataset
+        dataset_response = qs.describe_data_set(
+            AwsAccountId=payload.aws_account_id,
+            DataSetId=dataset_id
+        )
+        
+        dataset = dataset_response['DataSet']
+        print(f"Dataset Name: {dataset.get('Name')}")
+        
+        # ✅ NEW: Extract datasource metadata
+        print(f"\n🔍 Extracting datasource metadata...")
+        datasource_info = extract_datasource_metadata(
+            qs,
+            payload.aws_account_id,
+            dataset
+        )
+        
+        print(f"\n✅ Datasource Detection Results:")
+        print(f"   Type: {datasource_info['type']}")
+        print(f"   Name: {datasource_info['name']}")
+        print(f"   ID: {datasource_info['id']}")
+        
+        if datasource_info['type'] == 'SNOWFLAKE':
+            props = datasource_info['connection_properties']
+            print(f"   Snowflake Table: {props.get('database')}.{props.get('schema')}.{props.get('table')}")
+            print(f"   Warehouse: {props.get('warehouse')}")
+            print(f"   Host: {props.get('host')}")
+        
+        print(f"{'='*60}\n")
+        
+        return {
+            "status": "success",
+            "dataset": {
+                "DataSetId": dataset.get('DataSetId'),
+                "Name": dataset.get('Name'),
+                "Arn": dataset.get('Arn'),
+                "CreatedTime": dataset.get('CreatedTime').isoformat() if dataset.get('CreatedTime') else None,
+                "LastUpdatedTime": dataset.get('LastUpdatedTime').isoformat() if dataset.get('LastUpdatedTime') else None,
+                "ImportMode": dataset.get('ImportMode'),
+                "OutputColumns": dataset.get('OutputColumns', [])
+            },
+            "datasource": datasource_info  # ✅ NEW: Datasource metadata
+        }
+        
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        error_msg = e.response['Error']['Message']
+        print(f"❌ AWS Error: {error_code} - {error_msg}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": f"AWS Error ({error_code})",
+                "message": error_msg
+            }
+        )
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ Error: {error_msg}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Failed to describe dataset with source",
+                "message": error_msg
+            }
+        )
+
+
+@app.post("/api/quicksight/list-datasets-with-sources")
+def list_datasets_with_sources(payload: ListDataSetsRequest):
+    """
+    ✅ PHASE 1: Enhanced dataset listing that includes datasource metadata
+    
+    This is a more expensive operation than list-datasets because it:
+    1. Lists all datasets
+    2. Describes each dataset to get datasource info
+    
+    Use this sparingly or implement caching/pagination
+    """
+    try:
+        print(f"\n{'='*60}")
+        print(f"📊 LIST DATASETS WITH SOURCES")
+        print(f"{'='*60}")
+        
+        # Get QuickSight client
+        qs = get_quicksight_client(payload.role_arn, payload.region)
+        
+        # List datasets
+        print(f"Listing datasets for account: {payload.aws_account_id}")
+        response = qs.list_data_sets(AwsAccountId=payload.aws_account_id)
+        
+        datasets_summary = response.get('DataSetSummaries', [])
+        print(f"Found {len(datasets_summary)} datasets")
+        
+        # Enrich with datasource info
+        enriched_datasets = []
+        
+        for i, dataset_summary in enumerate(datasets_summary, 1):
+            dataset_id = dataset_summary['DataSetId']
+            dataset_name = dataset_summary['Name']
+            
+            print(f"\n[{i}/{len(datasets_summary)}] Processing: {dataset_name}")
+            
+            try:
+                # Get full dataset details
+                dataset_response = qs.describe_data_set(
+                    AwsAccountId=payload.aws_account_id,
+                    DataSetId=dataset_id
+                )
+                
+                dataset = dataset_response['DataSet']
+                
+                # Extract datasource metadata
+                datasource_info = extract_datasource_metadata(
+                    qs,
+                    payload.aws_account_id,
+                    dataset
+                )
+                
+                print(f"   Type: {datasource_info['type']}")
+                
+                enriched_datasets.append({
+                    "DataSetId": dataset_id,
+                    "Name": dataset_name,
+                    "Arn": dataset_summary.get('Arn'),
+                    "CreatedTime": dataset_summary.get('CreatedTime').isoformat() if dataset_summary.get('CreatedTime') else None,
+                    "LastUpdatedTime": dataset_summary.get('LastUpdatedTime').isoformat() if dataset_summary.get('LastUpdatedTime') else None,
+                    "ImportMode": dataset_summary.get('ImportMode'),
+                    "RowCount": dataset.get('RowLevelPermissionDataSet', {}).get('RowCount'),
+                    "Columns": [col.get('Name') for col in dataset.get('OutputColumns', [])],
+                    "datasource": datasource_info  # ✅ NEW
+                })
+                
+            except Exception as dataset_error:
+                print(f"   ⚠️ Error processing dataset: {dataset_error}")
+                # Include dataset even if datasource detection fails
+                enriched_datasets.append({
+                    "DataSetId": dataset_id,
+                    "Name": dataset_name,
+                    "Arn": dataset_summary.get('Arn'),
+                    "datasource": {
+                        "type": "UNKNOWN",
+                        "error": str(dataset_error)
+                    }
+                })
+        
+        # Group by datasource type
+        by_type = {}
+        for ds in enriched_datasets:
+            ds_type = ds['datasource']['type']
+            if ds_type not in by_type:
+                by_type[ds_type] = []
+            by_type[ds_type].append(ds)
+        
+        print(f"\n{'='*60}")
+        print(f"✅ DATASOURCE SUMMARY")
+        print(f"{'='*60}")
+        for ds_type, datasets in by_type.items():
+            print(f"{ds_type}: {len(datasets)} dataset(s)")
+        print(f"{'='*60}\n")
+        
+        return {
+            "status": "success",
+            "count": len(enriched_datasets),
+            "datasets": enriched_datasets,
+            "summary_by_type": {
+                ds_type: len(datasets)
+                for ds_type, datasets in by_type.items()
+            }
+        }
+        
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        error_msg = e.response['Error']['Message']
+        print(f"❌ AWS Error: {error_code} - {error_msg}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": f"AWS Error ({error_code})",
+                "message": error_msg
+            }
+        )
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ Error: {error_msg}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Failed to list datasets with sources",
+                "message": error_msg
+            }
+        )
+
+
+@app.get("/api/quicksight/supported-datasources")
+def get_supported_datasources():
+    """
+    Get list of supported datasource types
+    
+    This is a simple info endpoint for the frontend
+    """
+    return {
+        "status": "success",
+        "supported_types": [
+            {
+                "type": "SNOWFLAKE",
+                "name": "Snowflake",
+                "description": "Snowflake data warehouse",
+                "color": "#29B5E8"
+            },
+            {
+                "type": "REDSHIFT",
+                "name": "Amazon Redshift",
+                "description": "Amazon Redshift data warehouse",
+                "color": "#8C4FFF"
+            },
+            {
+                "type": "POSTGRES",
+                "name": "PostgreSQL",
+                "description": "PostgreSQL database",
+                "color": "#336791"
+            },
+            {
+                "type": "MYSQL",
+                "name": "MySQL",
+                "description": "MySQL database",
+                "color": "#4479A1"
+            },
+            {
+                "type": "MARIADB",
+                "name": "MariaDB",
+                "description": "MariaDB database",
+                "color": "#003545"
+            },
+            {
+                "type": "ATHENA",
+                "name": "Amazon Athena",
+                "description": "Amazon Athena query service",
+                "color": "#FF9900"
+            },
+            {
+                "type": "S3",
+                "name": "Amazon S3",
+                "description": "Amazon S3 storage",
+                "color": "#569A31"
+            }
+        ]
+    }
+
+# ==================== DATASET REGISTRY (PHASE 2) ====================
+
+@app.post("/api/datasets/register")
+def register_dataset(payload: RegisterDatasetRequest):
+    """
+    Register a QuickSight dataset with datasource metadata and optional Domo mapping
+    """
+    try:
+        dataset_registry.register_dataset(
+            qs_dataset_id=payload.qs_dataset_id,
+            qs_dataset_name=payload.qs_dataset_name,
+            datasource_type=payload.datasource_type,
+            connection_properties=payload.connection_properties,
+            domo_dataset_id=payload.domo_dataset_id
+        )
+        return {
+            "status": "success",
+            "message": "Dataset registered"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Failed to register dataset",
+                "message": str(e)
+            }
+        )
+
+
+@app.post("/api/datasets/suggest-match")
+def suggest_domo_match(payload: SuggestMatchRequest):
+    """
+    Suggest Domo dataset match for a QuickSight dataset
+    """
+    try:
+        suggestion = dataset_registry.suggest_domo_match(
+            qs_dataset_id=payload.qs_dataset_id,
+            available_domo_datasets=payload.domo_datasets
+        )
+        return {
+            "status": "success",
+            "suggested_domo_id": suggestion
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Failed to suggest match",
+                "message": str(e)
+            }
+        )
+
+
+@app.post("/api/datasets/validate-mapping")
+def validate_mapping(payload: ValidateMappingRequest):
+    """
+    Validate that QS → Domo dataset mapping is compatible
+    """
+    try:
+        # Fetch Domo dataset schema via existing endpoint logic
+        base_url = (
+            os.environ.get("DOMO_BASE_URL")
+            or os.environ.get("DOMO_INSTANCE_URL")
+            or os.environ.get("DOMO_INSTANCE")
+        )
+        if not base_url:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "Domo config missing",
+                    "message": "Set DOMO_BASE_URL"
+                }
+            )
+
+        client_id = os.environ.get("DOMO_CLIENT_ID")
+        client_secret = os.environ.get("DOMO_CLIENT_SECRET")
+        if not client_id or not client_secret:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "Domo credentials missing",
+                    "message": "Set DOMO_CLIENT_ID and DOMO_CLIENT_SECRET in backend env"
+                }
+            )
+
+        token = get_domo_access_token(client_id, client_secret)
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+
+        dataset_id = payload.domo_dataset_id
+        schema_url = f"{base_url.rstrip('/')}/api/query/v1/datasources/{dataset_id}/schema/indexed?options=INCLUDE_DATA_CONTROL_COLUMN_DETAILS"
+
+        schema_resp = requests.get(schema_url, headers=headers)
+        if schema_resp.status_code != 200:
+            raise HTTPException(
+                status_code=schema_resp.status_code,
+                detail={
+                    "error": "Failed to fetch dataset schema",
+                    "message": schema_resp.text
+                }
+            )
+
+        schema_json = schema_resp.json()
+        schema_columns = schema_json.get("columns", [])
+
+        validator = SchemaValidator()
+        result = validator.validate_mapping(
+            qs_dataset_columns=payload.qs_columns,
+            domo_schema_columns=schema_columns,
+            required_columns=payload.required_columns
+        )
+
+        return {
+            "status": "success",
+            "validation": result
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Dataset mapping validation failed",
+                "message": str(e)
             }
         )
 
