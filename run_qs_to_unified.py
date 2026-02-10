@@ -29,10 +29,18 @@ def extract_dimension_field(dim_entry: dict):
             f"Unsupported dimension field type: {dim_entry.keys()}"
         )
 
-    return {
+    result = {
         "column_name": field["Column"]["ColumnName"],
         "dataset_identifier": field["Column"]["DataSetIdentifier"]
     }
+
+    # Preserve time grain for date dimensions (used for bar/area aggregation)
+    if "DateDimensionField" in dim_entry:
+        time_grain = field.get("DateGranularity")
+        if time_grain:
+            result["time_grain"] = time_grain
+
+    return result
 
 
 # =========================================================
@@ -393,6 +401,7 @@ def transform_qs_dashboard_to_unified(qs_dashboard: Dict[str, Any]) -> Dict[str,
                 dim_info = extract_dimension_field(fw["Category"][0])
                 x_col = dim_info["column_name"]
                 dataset_identifier = dim_info["dataset_identifier"]
+                time_grain = dim_info.get("time_grain")
 
                 # ---- Measure ----
                 value_entry = fw["Values"][0]
@@ -436,7 +445,9 @@ def transform_qs_dashboard_to_unified(qs_dashboard: Dict[str, Any]) -> Dict[str,
                     "type": "STACKED_BAR" if stack_cols else "BAR",
                     "title": title,
                     "datasetRef": dataset_id_map[dataset_identifier],
-                    "x": [x_col],
+                    "x": [
+                        {"column": x_col, "timeGrain": time_grain} if time_grain else x_col
+                    ],
                     "stack": stack_cols,
                     "measures": [
                         {
