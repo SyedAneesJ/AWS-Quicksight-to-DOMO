@@ -113,6 +113,75 @@ class DomoAdapter:
         date_keywords = ["date", "time", "timestamp", "datetime", "day", "month", "year"]
         return any(keyword in column_name.lower() for keyword in date_keywords)
 
+    def _build_big_number_subscription(self, val_col: str, aggregation: str):
+        return {
+            "name": "big_number",
+            "columns": [
+                {
+                    "column": val_col,
+                    "aggregation": aggregation,
+                    "alias": f"{aggregation} of {val_col}",
+                    "format": {
+                        "type": "abbreviated",
+                        "format": "#A"
+                    }
+                }
+            ],
+            "filters": [],
+            "orderBy": [],
+            "groupBy": [],
+            "fiscal": False,
+            "projection": False,
+            "distinct": False,
+            "limit": 1
+        }
+
+    def _build_standard_definition(
+        self,
+        title: str,
+        main_subscription: dict,
+        chart_type: str,
+        overrides: dict | None = None,
+        value_column: str | None = None,
+        value_aggregation: str | None = None
+    ):
+        return {
+            "subscriptions": {
+                "big_number": self._build_big_number_subscription(
+                    value_column or main_subscription["columns"][-1]["column"],
+                    value_aggregation or main_subscription["columns"][-1].get("aggregation", "SUM")
+                ),
+                "main": main_subscription
+            },
+            "charts": {
+                "main": {
+                    "component": "main",
+                    "chartType": chart_type,
+                    "overrides": overrides or {},
+                    "goal": None
+                }
+            },
+            "dynamicTitle": {
+                "text": [
+                    {"type": "TEXT", "text": title}
+                ]
+            },
+            "dynamicDescription": {
+                "text": [],
+                "displayOnCardDetails": True
+            },
+            "formulas": {"card": [], "dsUpdated": [], "dsDeleted": []},
+            "annotations": {"new": [], "modified": [], "deleted": []},
+            "conditionalFormats": {"card": [], "datasource": []},
+            "controls": [],
+            "segments": {"active": [], "create": [], "update": [], "delete": []},
+            "chartVersion": "12",
+            "inputTable": False,
+            "title": title,
+            "description": "",
+            "includeEmptyFilters": True
+        }
+
 
     def _deploy_visual(self, page_id: str, visual: dict):
         payload = self.build_card_config(visual)
@@ -218,43 +287,51 @@ class DomoAdapter:
         x_title = (x_col or x_mapped).replace("_", " ").title()
         y_title = f"{aggregation} of {column_name}".replace("_", " ").title()
 
+        domo_grain = self._map_time_grain_to_domo(time_grain) if time_grain else None
+        date_grain = (
+            {"column": x_col, "dateTimeElement": domo_grain}
+            if time_grain and x_col and domo_grain else None
+        )
+
+        main_subscription = {
+            "name": "main",
+            "dataSourceId": dataset_id,
+            "columns": [
+                {
+                    "column": x_mapped,
+                    **({"calendar": True} if calendar_column else {}),
+                    "mapping": "ITEM"
+                },
+                {
+                    "column": column_name,
+                    "aggregation": aggregation,
+                    "mapping": "VALUE"
+                }
+            ],
+            "filters": [],
+            "orderBy": [],
+            "groupBy": [
+                {
+                    "column": x_mapped,
+                    **({"calendar": True} if calendar_column else {})
+                }
+            ],
+            **({"dateGrain": date_grain} if date_grain else {}),
+            "fiscal": False,
+            "projection": False,
+            "distinct": False
+        }
+
         return {
             "definition": {
-                "title": visual["title"],
-                "subscriptions": {
-                    "main": {
-                        "name": "main",
-                        "columns": [
-                            {
-                                "column": x_mapped,
-                                **({"calendar": True} if calendar_column else {}),
-                                "mapping": "ITEM"
-                            },
-                            {
-                                "column": column_name,
-                                "aggregation": aggregation,
-                                "mapping": "VALUE"
-                            }
-                        ],
-                        "filters": [],
-                        "groupBy": [
-                            {
-                                "column": x_mapped
-                            }
-                        ],
-                        "distinct": False
-                    }
-                },
-                "charts": {
-                    "main": {
-                        "component": "main",
-                        "chartType": "badge_vert_bar",
-                        "overrides": {
-                            "title_x": x_title,
-                            "title_y": y_title
-                        }
-                    }
-                }
+                **self._build_standard_definition(
+                    visual["title"],
+                    main_subscription,
+                    "badge_vert_bar",
+                    {"title_x": x_title, "title_y": y_title},
+                    column_name,
+                    aggregation
+                )
             },
             "dataProvider": {
                 "dataSourceId": dataset_id
@@ -291,48 +368,54 @@ class DomoAdapter:
 
         x_title = (x_col or x_mapped).replace("_", " ").title()
         y_title = f"{aggregation} of {column_name}".replace("_", " ")
+
+        domo_grain = self._map_time_grain_to_domo(time_grain) if time_grain else None
+        date_grain = (
+            {"column": x_col, "dateTimeElement": domo_grain}
+            if time_grain and x_col and domo_grain else None
+        )
+
+        main_subscription = {
+            "name": "main",
+            "dataSourceId": dataset_id,
+            "columns": [
+                {
+                    "column": x_mapped,
+                    **({"calendar": True} if calendar_column else {}),
+                    "mapping": "ITEM"
+                },
+                {
+                    "column": stack_mapped,
+                    "mapping": "SERIES"
+                },
+                {
+                    "column": column_name,
+                    "aggregation": aggregation,
+                    "mapping": "VALUE"
+                }
+            ],
+            "filters": [],
+            "orderBy": [],
+            "groupBy": [
+                {"column": x_mapped, **({"calendar": True} if calendar_column else {})},
+                {"column": stack_mapped}
+            ],
+            **({"dateGrain": date_grain} if date_grain else {}),
+            "fiscal": False,
+            "projection": False,
+            "distinct": False
+        }
         
         return {
             "definition": {
-                "title": visual["title"],
-                "subscriptions": {
-                    "main": {
-                        "name": "main",
-                        "columns": [
-                            {
-                                "column": x_mapped,
-                                **({"calendar": True} if calendar_column else {}),
-                                "mapping": "ITEM"
-                            },
-                            {
-                                "column": stack_mapped,
-                                "mapping": "SERIES"
-                            },
-                            {
-                                "column": column_name,
-                                "aggregation": aggregation,
-                                "mapping": "VALUE"
-                            }
-                        ],
-                        "filters": [],
-                        "groupBy": [
-                            {"column": x_mapped},
-                            {"column": stack_mapped}
-                        ],
-                        "distinct": False
-                    }
-                },
-                "charts": {
-                    "main": {
-                        "component": "main",
-                        "chartType": "badge_vert_stackedbar",
-                        "overrides": {
-                            "title_x": x_title,
-                            "title_y": y_title
-                        },
-                        "goal": None
-                    }
-                }
+                **self._build_standard_definition(
+                    visual["title"],
+                    main_subscription,
+                    "badge_vert_stackedbar",
+                    {"title_x": x_title, "title_y": y_title},
+                    column_name,
+                    aggregation
+                )
             },
             "dataProvider": {
                 "dataSourceId": dataset_id
@@ -580,37 +663,48 @@ class DomoAdapter:
         column_name = self._map_column(m["column"])
         aggregation = self._normalize_aggregation(m["aggregation"])
 
+        domo_grain = self._map_time_grain_to_domo(time_grain) if time_grain else None
+        date_grain = (
+            {"column": x_col, "dateTimeElement": domo_grain}
+            if time_grain and x_col and domo_grain else None
+        )
+
+        main_subscription = {
+            "name": "main",
+            "dataSourceId": dataset_id,
+            "columns": [
+                {
+                    "column": x_mapped,
+                    **({"calendar": True} if calendar_column else {}),
+                    "mapping": "ITEM"
+                },
+                {
+                    "column": column_name,
+                    "aggregation": aggregation,
+                    "mapping": "VALUE"
+                }
+            ],
+            "filters": [],
+            "orderBy": [],
+            "groupBy": [
+                {"column": x_mapped, **({"calendar": True} if calendar_column else {})}
+            ],
+            **({"dateGrain": date_grain} if date_grain else {}),
+            "fiscal": False,
+            "projection": False,
+            "distinct": False
+        }
+
         return {
             "definition": {
-                "title": visual["title"],
-                "subscriptions": {
-                    "main": {
-                        "name": "main",
-                        "columns": [
-                            {
-                                "column": x_mapped,
-                                **({"calendar": True} if calendar_column else {}),
-                                "mapping": "ITEM"
-                            },
-                            {
-                                "column": column_name,
-                                "aggregation": aggregation,
-                                "mapping": "VALUE"
-                            }
-                        ],
-                        "filters": [],
-                        "groupBy": [
-                            {"column": x_mapped}
-                        ],
-                        "distinct": False
-                    }
-                },
-                "charts": {
-                    "main": {
-                        "component": "main",
-                        "chartType": "badge_area"
-                    }
-                }
+                **self._build_standard_definition(
+                    visual["title"],
+                    main_subscription,
+                    "badge_area",
+                    {},
+                    column_name,
+                    aggregation
+                )
             },
             "dataProvider": {
                 "dataSourceId": dataset_id
