@@ -273,7 +273,8 @@ def extract_combo_chart_fields(combo_visual: dict, qs_calculated_fields: list):
         if dim_info:
             category_field = {
                 "column": dim_info["column_name"],
-                "dataset_identifier": dim_info["dataset_identifier"]
+                "dataset_identifier": dim_info["dataset_identifier"],
+                "time_grain": dim_info.get("time_grain")
             }
     
     # Bar Values
@@ -905,7 +906,12 @@ def transform_qs_dashboard_to_unified(qs_dashboard: Dict[str, Any]) -> Dict[str,
                     "type": "COMBO",
                     "title": title,
                     "datasetRef": dataset_id_map.get(dataset_identifier, list(dataset_id_map.values())[0] if dataset_id_map else ""),
-                    "x": [category_field["column"]],
+                    "x": [
+                        {
+                            "column": category_field["column"],
+                            "timeGrain": category_field.get("time_grain")
+                        } if category_field.get("time_grain") else category_field["column"]
+                    ],
                     "series": [cf["column"] for cf in color_fields],
                     "barMeasures": bar_measures,
                     "lineMeasures": line_measures,

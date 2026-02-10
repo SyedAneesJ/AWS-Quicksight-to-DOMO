@@ -1080,9 +1080,19 @@ class DomoAdapter:
         x_entry = visual["x"][0]
         x_col, time_grain = self._extract_time_grain(x_entry)
         x_col_mapped = self._map_column(x_col)
-        
+
         is_date_field = self._is_date_column(x_col_mapped)
         domo_grain = self._map_time_grain_to_domo(time_grain) if time_grain else "DAY"
+
+        calendar_column_map = {
+            "DAY": "CalendarDay",
+            "WEEK": "CalendarWeek",
+            "MONTH": "CalendarMonth",
+            "QUARTER": "CalendarQuarter",
+            "YEAR": "CalendarYear"
+        }
+        calendar_column = calendar_column_map.get(str(time_grain).upper(), "CalendarDay") if is_date_field else None
+        x_item_col = calendar_column or x_col_mapped
 
         bar_measures = visual.get("barMeasures", [])
         line_measures = visual.get("lineMeasures", [])
@@ -1106,25 +1116,28 @@ class DomoAdapter:
 
         # X-axis
         subscription_columns.append({
-            "column": x_col_mapped,
+            "column": x_item_col,
+            **({"calendar": True} if calendar_column else {}),
             "mapping": "ITEM"
         })
         group_by.append({
-            "column": x_col_mapped
+            "column": x_item_col,
+            **({"calendar": True} if calendar_column else {})
         })
 
-        # Add both measures (bar first, then line)
+        # Add measures: avoid duplicate VALUE on same column
         subscription_columns.append({
             "column": bar_col,
             "aggregation": bar_agg,
             "mapping": "VALUE"
         })
-        
-        subscription_columns.append({
-            "column": line_col,
-            "aggregation": line_agg,
-            "mapping": "VALUE"
-        })
+
+        if line_col != bar_col:
+            subscription_columns.append({
+                "column": line_col,
+                "aggregation": line_agg,
+                "mapping": "VALUE"
+            })
 
         # Series column (optional)
         if series_col:
@@ -1152,7 +1165,7 @@ class DomoAdapter:
         # Add dateGrain for date fields
         if is_date_field:
             main_subscription["dateGrain"] = {
-                "column": x_col_mapped,
+                "column": x_col,
                 "dateTimeElement": domo_grain
             }
 
@@ -1180,50 +1193,20 @@ class DomoAdapter:
             "limit": 1
         }
 
+        definition = self._build_standard_definition(
+            visual.get("title", "Combo Chart"),
+            main_subscription,
+            "badge_line_stackedbar",
+            {},
+            bar_col,
+            bar_agg
+        )
+        definition["allowTableDrill"] = True
+        definition["controls"] = definition.get("controls", [])
+        definition["segments"] = {"active": [], "create": [], "update": [], "delete": []}
+
         payload = {
-            "definition": {
-                "subscriptions": {
-                    "big_number": big_number_subscription,  # ✅ Add big_number FIRST
-                    "main": main_subscription
-                },
-                "formulas": {
-                    "dsUpdated": [],
-                    "dsDeleted": [],
-                    "card": []
-                },
-                "conditionalFormats": {
-                    "card": [],
-                    "datasource": []
-                },
-                "annotations": {
-                    "new": [],
-                    "modified": [],
-                    "deleted": []
-                },
-                "dynamicTitle": {
-                    "text": [{"text": visual.get("title", "Combo Chart"), "type": "TEXT"}]
-                },
-                "dynamicDescription": {
-                    "text": [],
-                    "displayOnCardDetails": True
-                },
-                "chartVersion": "12",
-                "charts": {
-                    "main": {
-                        "component": "main",
-                        "chartType": "badge_line_stackedbar",
-                        "overrides": {},
-                        "goal": None
-                    }
-                },
-                "allowTableDrill": True,
-                "segments": {
-                    "active": [],
-                    "definitions": []
-                },
-                "controls": [],  # ✅ Add controls array
-                "inputTable": False
-            },
+            "definition": definition,
             "dataProvider": {
                 "dataSourceId": dataset_id
             },
