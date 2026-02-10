@@ -196,11 +196,26 @@ class DomoAdapter:
         x = visual["x"][0]
         m = visual["measures"][0]
 
-        x_mapped = self._map_column(x)
+        x_col = x.get("column") if isinstance(x, dict) else x
+        time_grain = x.get("timeGrain") if isinstance(x, dict) else None
+
+        calendar_column_map = {
+            "DAY": "CalendarDay",
+            "WEEK": "CalendarWeek",
+            "MONTH": "CalendarMonth",
+            "QUARTER": "CalendarQuarter",
+            "YEAR": "CalendarYear"
+        }
+
+        calendar_column = None
+        if time_grain:
+            calendar_column = calendar_column_map.get(str(time_grain).upper(), "CalendarDay")
+
+        x_mapped = calendar_column or self._map_column(x_col)
         column_name = self._map_column(m["column"])
         aggregation = self._normalize_aggregation(m["aggregation"])
         
-        x_title = x_mapped.replace("_", " ").title()
+        x_title = (x_col or x_mapped).replace("_", " ").title()
         y_title = f"{aggregation} of {column_name}".replace("_", " ").title()
 
         return {
@@ -212,6 +227,7 @@ class DomoAdapter:
                         "columns": [
                             {
                                 "column": x_mapped,
+                                **({"calendar": True} if calendar_column else {}),
                                 "mapping": "ITEM"
                             },
                             {
@@ -253,12 +269,27 @@ class DomoAdapter:
         stack = visual["stack"][0]
         m = visual["measures"][0]
         
-        x_mapped = self._map_column(x)
+        x_col = x.get("column") if isinstance(x, dict) else x
+        time_grain = x.get("timeGrain") if isinstance(x, dict) else None
+
+        calendar_column_map = {
+            "DAY": "CalendarDay",
+            "WEEK": "CalendarWeek",
+            "MONTH": "CalendarMonth",
+            "QUARTER": "CalendarQuarter",
+            "YEAR": "CalendarYear"
+        }
+
+        calendar_column = None
+        if time_grain:
+            calendar_column = calendar_column_map.get(str(time_grain).upper(), "CalendarDay")
+
+        x_mapped = calendar_column or self._map_column(x_col)
         stack_mapped = self._map_column(stack)
         column_name = self._map_column(m["column"])
         aggregation = self._normalize_aggregation(m["aggregation"])
 
-        x_title = x_mapped.replace("_", " ").title()
+        x_title = (x_col or x_mapped).replace("_", " ").title()
         y_title = f"{aggregation} of {column_name}".replace("_", " ")
         
         return {
@@ -270,6 +301,7 @@ class DomoAdapter:
                         "columns": [
                             {
                                 "column": x_mapped,
+                                **({"calendar": True} if calendar_column else {}),
                                 "mapping": "ITEM"
                             },
                             {
@@ -529,7 +561,8 @@ class DomoAdapter:
         x = visual["x"][0]
         m = visual["measures"][0]
 
-        x_mapped = self._map_column(x)
+        x_col = x.get("column") if isinstance(x, dict) else x
+        x_mapped = self._map_column(x_col)
         column_name = self._map_column(m["column"])
         aggregation = self._normalize_aggregation(m["aggregation"])
 
