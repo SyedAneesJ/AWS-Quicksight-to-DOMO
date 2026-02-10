@@ -441,13 +441,15 @@ def validate_aws(payload: dict):
         role_arn = payload["role_arn"]
         region = payload.get("region", "us-east-1")
         account_id = payload["aws_account_id"]
+        external_id = payload.get("external_id")
 
         print(f"Account ID: {account_id}")
         print(f"Region: {region}")
         print(f"Role ARN: {role_arn}")
+        print(f"External ID: {external_id}")
 
         # Get QuickSight client (this will fail if role can't be assumed)
-        qs = get_quicksight_client(role_arn, region, payload.get("external_id"))
+        qs = get_quicksight_client(role_arn, region, external_id)
 
         # Test with a simple API call
         response = qs.list_dashboards(
