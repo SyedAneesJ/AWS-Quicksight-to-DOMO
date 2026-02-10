@@ -700,7 +700,7 @@ class DomoAdapter:
                 **self._build_standard_definition(
                     visual["title"],
                     main_subscription,
-                    "badge_area",
+                    "badge_vert_area_overlay",
                     {},
                     column_name,
                     aggregation
