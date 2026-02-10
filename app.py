@@ -437,7 +437,7 @@ def validate_aws(payload: dict):
         print(f"\n{'='*60}")
         print(f"🔑 VALIDATING AWS CREDENTIALS")
         print(f"{'='*60}")
-        
+
         role_arn = payload["role_arn"]
         region = payload.get("region", "us-east-1")
         account_id = payload["aws_account_id"]
@@ -447,6 +447,11 @@ def validate_aws(payload: dict):
         print(f"Region: {region}")
         print(f"Role ARN: {role_arn}")
         print(f"External ID: {external_id}")
+        try:
+            caller = boto3.client("sts").get_caller_identity()
+            print(f"Caller Identity: {caller}")
+        except Exception as e:
+            print(f"⚠️ Failed to get caller identity: {e}")
 
         # Get QuickSight client (this will fail if role can't be assumed)
         qs = get_quicksight_client(role_arn, region, external_id)
