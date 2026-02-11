@@ -1125,8 +1125,18 @@ class DomoAdapter:
             **({"calendar": True} if calendar_column else {})
         })
 
-        # If bar/line use same column, model as SERIES (matches expected payload)
-        if bar_col == line_col:
+        # If series exists, always include it for stacked bars
+        if series_col:
+            subscription_columns.append({
+                "column": series_col,
+                "mapping": "SERIES"
+            })
+            group_by.append({
+                "column": series_col
+            })
+
+        if bar_col == line_col and not series_col:
+            # No series: model two aggregations as SERIES to show both measures
             subscription_columns.append({
                 "column": bar_col,
                 "aggregation": bar_agg,
@@ -1148,16 +1158,6 @@ class DomoAdapter:
                 "aggregation": line_agg,
                 "mapping": "VALUE"
             })
-
-            # Series column (optional)
-            if series_col:
-                subscription_columns.append({
-                    "column": series_col,
-                    "mapping": "SERIES"
-                })
-                group_by.append({
-                    "column": series_col
-                })
 
         # Build main subscription
         main_subscription = {
