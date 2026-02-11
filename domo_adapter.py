@@ -1125,29 +1125,39 @@ class DomoAdapter:
             **({"calendar": True} if calendar_column else {})
         })
 
-        # Add measures: avoid duplicate VALUE on same column
-        subscription_columns.append({
-            "column": bar_col,
-            "aggregation": bar_agg,
-            "mapping": "VALUE"
-        })
-
-        if line_col != bar_col:
+        # If bar/line use same column, model as SERIES (matches expected payload)
+        if bar_col == line_col:
+            subscription_columns.append({
+                "column": bar_col,
+                "aggregation": bar_agg,
+                "mapping": "SERIES"
+            })
+            subscription_columns.append({
+                "column": line_col,
+                "aggregation": line_agg,
+                "mapping": "SERIES"
+            })
+        else:
+            subscription_columns.append({
+                "column": bar_col,
+                "aggregation": bar_agg,
+                "mapping": "VALUE"
+            })
             subscription_columns.append({
                 "column": line_col,
                 "aggregation": line_agg,
                 "mapping": "VALUE"
             })
 
-        # Series column (optional)
-        if series_col:
-            subscription_columns.append({
-                "column": series_col,
-                "mapping": "SERIES"
-            })
-            group_by.append({
-                "column": series_col
-            })
+            # Series column (optional)
+            if series_col:
+                subscription_columns.append({
+                    "column": series_col,
+                    "mapping": "SERIES"
+                })
+                group_by.append({
+                    "column": series_col
+                })
 
         # Build main subscription
         main_subscription = {
