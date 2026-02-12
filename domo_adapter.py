@@ -446,10 +446,11 @@ class DomoAdapter:
             "YEAR": "CalendarYear"
         }
 
-        calendar_column = calendar_column_map.get(time_grain, "CalendarDay")
+        calendar_column = calendar_column_map.get(str(time_grain).upper(), "CalendarDay")
 
         # -------- MEASURE --------
-        m = visual["measures"][0]
+        measures = visual.get("measures", [])
+        m = measures[0]
         val_col = self._map_column(m["column"])
         aggregation = self._normalize_aggregation(m.get("aggregation", "SUM"))
 
@@ -457,6 +458,7 @@ class DomoAdapter:
         stack_fields = visual.get("stack", [])
         has_series = len(stack_fields) > 0
         series_col = self._map_column(stack_fields[0]) if has_series else None
+        has_multi_measure = len(measures) > 1
 
         # -------- AXIS TITLES --------
         x_title = visual.get("axes", {}).get("x", {}).get("title", "Date")
@@ -470,6 +472,8 @@ class DomoAdapter:
         )
         if has_series:
             print(f"   Multi-line mode: SERIES = {series_col}")
+        elif has_multi_measure:
+            print("   Multi-line mode: MULTI-MEASURE")
         else:
             print(f"   Single-line mode")
 
@@ -503,11 +507,6 @@ class DomoAdapter:
                 "calendar": True,
                 "mapping": "ITEM"
             },
-            {
-                "column": val_col,
-                "aggregation": aggregation,
-                "mapping": "VALUE"
-            }
         ]
         
         main_groupby = [
@@ -517,14 +516,34 @@ class DomoAdapter:
             }
         ]
 
-        # ✅ ADD SERIES COLUMN FOR MULTI-LINE
         if has_series:
+            # ✅ Dimension-based multi-line: VALUE + SERIES
+            main_columns.append({
+                "column": val_col,
+                "aggregation": aggregation,
+                "mapping": "VALUE"
+            })
             main_columns.append({
                 "column": series_col,
                 "mapping": "SERIES"
             })
             main_groupby.append({
                 "column": series_col
+            })
+        elif has_multi_measure:
+            # ✅ Measure-based multi-line: each measure as SERIES
+            for measure in measures:
+                main_columns.append({
+                    "column": self._map_column(measure["column"]),
+                    "aggregation": self._normalize_aggregation(measure.get("aggregation", "SUM")),
+                    "mapping": "SERIES"
+                })
+        else:
+            # ✅ Single-line
+            main_columns.append({
+                "column": val_col,
+                "aggregation": aggregation,
+                "mapping": "VALUE"
             })
 
         main_subscription = {
