@@ -560,14 +560,27 @@ def transform_qs_dashboard_to_unified(qs_dashboard: Dict[str, Any]) -> Dict[str,
                     print(f"⚠️ Skipping LineChartVisual without Values: {line['VisualId']}")
                     continue
 
-                measure_info = extract_measure_field(values[0])
-                y_col = measure_info["column_name"]
-                
-                # ✅ Resolve calculated fields to base columns
-                if y_col in [cf["Name"] for cf in qs_calculated_fields]:
-                    y_col = resolve_calculated_field(y_col, qs_calculated_fields)
-                
-                aggregation = normalize_aggregation(measure_info["aggregation"])
+                measures = []
+                for value_entry in values:
+                    measure_info = extract_measure_field(value_entry)
+                    if not measure_info:
+                        continue
+                    col_name = measure_info["column_name"]
+                    # ✅ Resolve calculated fields to base columns
+                    if col_name in [cf["Name"] for cf in qs_calculated_fields]:
+                        col_name = resolve_calculated_field(col_name, qs_calculated_fields)
+                    measures.append({
+                        "column": col_name,
+                        "aggregation": measure_info["aggregation"]
+                    })
+
+                if not measures:
+                    print(f"⚠️ Skipping LineChartVisual without resolved measures: {line['VisualId']}")
+                    continue
+
+                # Use first measure for title/axes default
+                y_col = measures[0]["column"]
+                aggregation = normalize_aggregation(measures[0]["aggregation"])
 
                 # -----------------------------
                 # SERIES / COLOR (optional)
@@ -614,12 +627,7 @@ def transform_qs_dashboard_to_unified(qs_dashboard: Dict[str, Any]) -> Dict[str,
                         }
                     ],
                     "stack": stack_cols,  # Keep for stacked area/line
-                    "measures": [
-                        {
-                            "column": y_col,
-                            "aggregation": aggregation
-                        }
-                    ],
+                    "measures": measures,
                     "axes": {
                         "x": {"title": x_title},
                         "y": {"title": y_title}
