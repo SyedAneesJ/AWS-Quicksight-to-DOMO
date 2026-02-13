@@ -4,7 +4,7 @@ QuickSight to Domo Migration API - COMPLETE & WORKING
 ✅ Enhanced debugging for unified schema conversion
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import boto3
@@ -21,6 +21,7 @@ from dataset_resolver import StaticDatasetResolver
 from domo_auth import get_domo_access_token
 import base64
 from domo_client import DomoClient
+from domo_dataset_index import search_domo_datasets, refresh_domo_dataset_index, get_domo_dataset_index_status
 
 from datasource_inspector import DataSourceInspector, extract_datasource_metadata
 from dataset_registry import DatasetRegistry
@@ -1305,6 +1306,55 @@ def domo_dataset_detail(payload: DomoDatasetDetailRequest):
             status_code=500,
             detail={
                 "error": "Domo dataset detail failed",
+                "message": str(e)
+            }
+        )
+
+
+# ==================== DOMO DATASET SEARCH (INDEXED) ====================
+
+@app.get("/api/domo/datasets/search")
+def search_domo_datasets_endpoint(q: str = Query("", description="Search term"), limit: int = Query(20, ge=1, le=100)):
+    """
+    Search Domo datasets by name using cached backend index.
+    Returns minimal {id, name} entries.
+    """
+    try:
+        results = search_domo_datasets(q, limit)
+        return {
+            "status": "success",
+            "count": len(results),
+            "datasets": results,
+            "cache": get_domo_dataset_index_status()
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Domo dataset search failed",
+                "message": str(e)
+            }
+        )
+
+
+@app.post("/api/domo/datasets/refresh")
+def refresh_domo_datasets_endpoint():
+    """
+    Force refresh the Domo dataset index cache.
+    """
+    try:
+        data = refresh_domo_dataset_index()
+        status = get_domo_dataset_index_status()
+        return {
+            "status": "success",
+            "count": len(data),
+            "cache": status
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Domo dataset index refresh failed",
                 "message": str(e)
             }
         )
