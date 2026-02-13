@@ -44,6 +44,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ==================== STARTUP ====================
+@app.on_event("startup")
+def warm_dataset_index_on_startup():
+    try:
+        warm_index_async()
+    except Exception as e:
+        print(f"⚠️ Dataset index warm on startup failed: {e}")
+
 # ==================== MODELS ====================
 
 class AWSCredentials(BaseModel):
