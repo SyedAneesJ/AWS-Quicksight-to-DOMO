@@ -6,7 +6,7 @@ import requests
 
 from domo_auth import get_domo_access_token
 
-DATASET_INDEX_TTL_SECONDS = int(os.environ.get("DATASET_INDEX_TTL_SECONDS", "900"))
+DATASET_INDEX_TTL_SECONDS = int(os.environ.get("DATASET_INDEX_TTL_SECONDS", "300"))
 DATASET_INDEX_MAX = int(os.environ.get("DATASET_INDEX_MAX", "5000"))
 DATASET_INDEX_PAGE_SIZE = int(os.environ.get("DATASET_INDEX_PAGE_SIZE", "50"))
 

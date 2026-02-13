@@ -534,23 +534,34 @@ def transform_qs_dashboard_to_unified(qs_dashboard: Dict[str, Any]) -> Dict[str,
                 )
 
                 # -----------------------------
-                # X AXIS (Date)
+                # X AXIS (Date or Dimension)
                 # -----------------------------
                 category_field = fw.get("Category", [])
-                if not category_field or "DateDimensionField" not in category_field[0]:
-                    print(f"⚠️ Skipping LineChartVisual without Date category: {line['VisualId']}")
+                if not category_field:
+                    print(f"⚠️ Skipping LineChartVisual without Category: {line['VisualId']}")
                     continue
 
-                date_field = category_field[0]["DateDimensionField"]
+                x_col = None
+                dataset_identifier = None
+                time_grain = None
 
-                x_col = date_field["Column"]["ColumnName"]
-                dataset_identifier = date_field["Column"]["DataSetIdentifier"]
-                time_grain = date_field.get("DateGranularity")  # DAY / MONTH / YEAR
+                if "DateDimensionField" in category_field[0]:
+                    date_field = category_field[0]["DateDimensionField"]
+                    x_col = date_field["Column"]["ColumnName"]
+                    dataset_identifier = date_field["Column"]["DataSetIdentifier"]
+                    time_grain = date_field.get("DateGranularity")  # DAY / MONTH / YEAR
 
-                # ✅ FIX: Handle null timeGrain - default to "DAY" for line charts
-                if not time_grain or time_grain == "null" or str(time_grain).lower() == "null":
-                    time_grain = "DAY"
-                    print(f"  ⚠️ timeGrain is null for {x_col}, defaulting to DAY")
+                    # ✅ FIX: Handle null timeGrain - default to "DAY" for line charts
+                    if not time_grain or time_grain == "null" or str(time_grain).lower() == "null":
+                        time_grain = "DAY"
+                        print(f"  ⚠️ timeGrain is null for {x_col}, defaulting to DAY")
+                else:
+                    dim_info = extract_dimension_field(category_field[0])
+                    if not dim_info:
+                        print(f"⚠️ Skipping LineChartVisual without resolvable Category: {line['VisualId']}")
+                        continue
+                    x_col = dim_info["column_name"]
+                    dataset_identifier = dim_info.get("dataset_identifier")
                 
                 # -----------------------------
                 # Y AXIS (Measure)
@@ -619,12 +630,9 @@ def transform_qs_dashboard_to_unified(qs_dashboard: Dict[str, Any]) -> Dict[str,
                     "id": line["VisualId"],
                     "type": visual_type,
                     "title": title,
-                    "datasetRef": dataset_id_map[dataset_identifier],
+                    "datasetRef": dataset_id_map.get(dataset_identifier, list(dataset_id_map.values())[0] if dataset_id_map else ""),
                     "x": [
-                        {
-                            "column": x_col,
-                            "timeGrain": time_grain  # ✅ This will be DAY, MONTH, YEAR, etc.
-                        }
+                        {"column": x_col, "timeGrain": time_grain} if time_grain else x_col
                     ],
                     "stack": stack_cols,  # Keep for stacked area/line
                     "measures": measures,

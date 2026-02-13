@@ -433,10 +433,16 @@ class DomoAdapter:
 
         # -------- X AXIS --------
         x_entry = visual["x"][0]
-        x_col = self._map_column(x_entry["column"])
-        time_grain = x_entry.get("timeGrain", "DAY")
+        if isinstance(x_entry, dict):
+            x_raw = x_entry.get("column")
+            time_grain = x_entry.get("timeGrain")
+        else:
+            x_raw = x_entry
+            time_grain = None
 
-        domo_grain = self._map_time_grain_to_domo(time_grain)
+        x_col = self._map_column(x_raw)
+
+        domo_grain = self._map_time_grain_to_domo(time_grain) if time_grain else None
 
         calendar_column_map = {
             "DAY": "CalendarDay",
@@ -446,7 +452,10 @@ class DomoAdapter:
             "YEAR": "CalendarYear"
         }
 
-        calendar_column = calendar_column_map.get(str(time_grain).upper(), "CalendarDay")
+        calendar_column = (
+            calendar_column_map.get(str(time_grain).upper(), "CalendarDay")
+            if time_grain else None
+        )
 
         # -------- MEASURE --------
         measures = visual.get("measures", [])
@@ -461,15 +470,21 @@ class DomoAdapter:
         has_multi_measure = len(measures) > 1
 
         # -------- AXIS TITLES --------
-        x_title = visual.get("axes", {}).get("x", {}).get("title", "Date")
+        x_title = visual.get("axes", {}).get("x", {}).get(
+            "title",
+            "Date" if time_grain else (x_raw or "Category")
+        )
         y_title = visual.get("axes", {}).get("y", {}).get(
             "title", f"{aggregation} of {val_col}"
         )
 
-        print(
-            f"📈 LINE chart - Date grain: {time_grain} -> "
-            f"Domo: {domo_grain} -> Calendar: {calendar_column}"
-        )
+        if time_grain:
+            print(
+                f"📈 LINE chart - Date grain: {time_grain} -> "
+                f"Domo: {domo_grain} -> Calendar: {calendar_column}"
+            )
+        else:
+            print(f"📈 LINE chart - Non-date category: {x_col}")
         if has_series:
             print(f"   Multi-line mode: SERIES = {series_col}")
         elif has_multi_measure:
@@ -501,18 +516,19 @@ class DomoAdapter:
         }
 
         # -------- MAIN SUBSCRIPTION --------
+        item_column = calendar_column or x_col
         main_columns = [
             {
-                "column": calendar_column,
-                "calendar": True,
+                "column": item_column,
+                **({"calendar": True} if calendar_column else {}),
                 "mapping": "ITEM"
             },
         ]
         
         main_groupby = [
             {
-                "column": calendar_column,
-                "calendar": True
+                "column": item_column,
+                **({"calendar": True} if calendar_column else {})
             }
         ]
 
@@ -546,6 +562,11 @@ class DomoAdapter:
                 "mapping": "VALUE"
             })
 
+        date_grain = (
+            {"column": x_raw, "dateTimeElement": domo_grain}
+            if time_grain and x_raw and domo_grain else None
+        )
+
         main_subscription = {
             "name": "main",
             "dataSourceId": dataset_id,
@@ -553,10 +574,7 @@ class DomoAdapter:
             "filters": [],
             "orderBy": [],
             "groupBy": main_groupby,
-            "dateGrain": {
-                "column": x_col,              # actual date column
-                "dateTimeElement": domo_grain
-            },
+            **({"dateGrain": date_grain} if date_grain else {}),
             "fiscal": False,
             "projection": False,
             "distinct": False
@@ -735,10 +753,15 @@ class DomoAdapter:
         dataset_id = self.dataset_resolver.resolve(visual["datasetRef"])
 
         x_entry = visual["x"][0]
-        x_col = self._map_column(x_entry["column"])
-        time_grain = x_entry.get("timeGrain", "DAY")
+        if isinstance(x_entry, dict):
+            x_raw = x_entry.get("column")
+            time_grain = x_entry.get("timeGrain")
+        else:
+            x_raw = x_entry
+            time_grain = None
 
-        domo_grain = self._map_time_grain_to_domo(time_grain)
+        x_col = self._map_column(x_raw)
+        domo_grain = self._map_time_grain_to_domo(time_grain) if time_grain else None
 
         calendar_column_map = {
             "DAY": "CalendarDay",
@@ -748,7 +771,10 @@ class DomoAdapter:
             "YEAR": "CalendarYear"
         }
 
-        calendar_column = calendar_column_map.get(time_grain, "CalendarDay")
+        calendar_column = (
+            calendar_column_map.get(str(time_grain).upper(), "CalendarDay")
+            if time_grain else None
+        )
 
         measure = visual["measures"][0]
         value_col = self._map_column(measure["column"])
@@ -756,13 +782,19 @@ class DomoAdapter:
 
         stack_col = self._map_column(visual["stack"][0])
 
+        item_column = calendar_column or x_col
+        date_grain = (
+            {"column": x_raw, "dateTimeElement": domo_grain}
+            if time_grain and x_raw and domo_grain else None
+        )
+
         main_subscription = {
             "name": "main",
             "dataSourceId": dataset_id,
             "columns": [
                 {
-                    "column": calendar_column,
-                    "calendar": True,
+                    "column": item_column,
+                    **({"calendar": True} if calendar_column else {}),
                     "mapping": "ITEM"
                 },
                 {
@@ -779,17 +811,14 @@ class DomoAdapter:
             "orderBy": [],
             "groupBy": [
                 {
-                    "column": calendar_column,
-                    "calendar": True
+                    "column": item_column,
+                    **({"calendar": True} if calendar_column else {})
                 },
                 {
                     "column": stack_col
                 }
             ],
-            "dateGrain": {
-                "column": x_col,
-                "dateTimeElement": domo_grain
-            },
+            **({"dateGrain": date_grain} if date_grain else {}),
             "fiscal": False,
             "projection": False,
             "distinct": False
