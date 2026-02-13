@@ -7,7 +7,7 @@ import requests
 from domo_auth import get_domo_access_token
 
 DATASET_INDEX_TTL_SECONDS = int(os.environ.get("DATASET_INDEX_TTL_SECONDS", "300"))
-DATASET_INDEX_MAX = int(os.environ.get("DATASET_INDEX_MAX", "5000"))
+DATASET_INDEX_MAX = int(os.environ.get("DATASET_INDEX_MAX", "10000"))
 DATASET_INDEX_PAGE_SIZE = int(os.environ.get("DATASET_INDEX_PAGE_SIZE", "50"))
 
 _CACHE: Dict[str, Any] = {
@@ -87,17 +87,17 @@ def get_domo_dataset_index(force_refresh: bool = False) -> List[Dict[str, str]]:
     return data
 
 
-def search_domo_datasets(query: str, limit: int = 20) -> List[Dict[str, str]]:
+def search_domo_datasets(query: str, limit: int | None = None) -> List[Dict[str, str]]:
     query = (query or "").strip()
     if not query:
         return []
 
-    max_limit = max(1, min(int(limit or 20), 100))
+    max_limit = None if limit is None else max(1, int(limit))
     data = get_domo_dataset_index(force_refresh=False)
     q = query.lower()
 
     results = [ds for ds in data if q in (ds.get("name") or "").lower()]
-    return results[:max_limit]
+    return results if max_limit is None else results[:max_limit]
 
 
 def refresh_domo_dataset_index() -> List[Dict[str, str]]:

@@ -1272,9 +1272,9 @@ class DomoAdapter:
         }
         
         # DEBUG: Print the payload
-        import json
-        print("\n🔍 COMBO PAYLOAD:")
-        print(json.dumps(payload, indent=2))
-        print("\n")
+        # import json
+        # print("\n🔍 COMBO PAYLOAD:")
+        # print(json.dumps(payload, indent=2))
+        # print("\n")
         
         return payload

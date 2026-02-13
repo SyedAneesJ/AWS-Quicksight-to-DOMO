@@ -1314,7 +1314,7 @@ def domo_dataset_detail(payload: DomoDatasetDetailRequest):
 # ==================== DOMO DATASET SEARCH (INDEXED) ====================
 
 @app.get("/api/domo/datasets/search")
-def search_domo_datasets_endpoint(q: str = Query("", description="Search term"), limit: int = Query(20, ge=1, le=100)):
+def search_domo_datasets_endpoint(q: str = Query("", description="Search term"), limit: Optional[int] = Query(None, ge=1)):
     """
     Search Domo datasets by name using cached backend index.
     Returns minimal {id, name} entries.
