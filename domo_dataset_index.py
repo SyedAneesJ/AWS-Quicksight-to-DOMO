@@ -134,7 +134,9 @@ def warm_index_async() -> None:
     import threading
 
     def _warm():
+        print("⏳ Dataset index warm start")
         get_domo_dataset_index(force_refresh=True)
+        print("✅ Dataset index warm complete")
 
     _REFRESHING = True
     threading.Thread(target=_warm, daemon=True).start()
