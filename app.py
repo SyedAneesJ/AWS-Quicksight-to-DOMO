@@ -21,7 +21,7 @@ from dataset_resolver import StaticDatasetResolver
 from domo_auth import get_domo_access_token
 import base64
 from domo_client import DomoClient
-from domo_dataset_index import search_domo_datasets, refresh_domo_dataset_index, get_domo_dataset_index_status
+from domo_dataset_index import search_domo_datasets, refresh_domo_dataset_index, get_domo_dataset_index_status, warm_index_async, is_warming
 
 from datasource_inspector import DataSourceInspector, extract_datasource_metadata
 from dataset_registry import DatasetRegistry
@@ -1324,6 +1324,7 @@ def search_domo_datasets_endpoint(
     Returns minimal {id, name} entries.
     """
     try:
+        warm_index_async()
         payload = search_domo_datasets(q, limit, offset)
         results = payload["results"]
         total = payload["total"]
@@ -1332,7 +1333,8 @@ def search_domo_datasets_endpoint(
             "count": len(results),
             "total": total,
             "datasets": results,
-            "cache": get_domo_dataset_index_status()
+            "cache": get_domo_dataset_index_status(),
+            "warming": payload.get("warming", False)
         }
     except Exception as e:
         raise HTTPException(

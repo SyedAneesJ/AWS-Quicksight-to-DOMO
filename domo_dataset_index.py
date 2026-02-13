@@ -6,7 +6,7 @@ import requests
 
 from domo_auth import get_domo_access_token
 
-DATASET_INDEX_TTL_SECONDS = int(os.environ.get("DATASET_INDEX_TTL_SECONDS", "300"))
+DATASET_INDEX_TTL_SECONDS = int(os.environ.get("DATASET_INDEX_TTL_SECONDS", "900"))
 DATASET_INDEX_MAX = int(os.environ.get("DATASET_INDEX_MAX", "15000"))
 DATASET_INDEX_PAGE_SIZE = int(os.environ.get("DATASET_INDEX_PAGE_SIZE", "50"))
 
@@ -14,6 +14,7 @@ _CACHE: Dict[str, Any] = {
     "data": [],
     "fetched_at": 0.0
 }
+_REFRESHING: bool = False
 
 
 def _get_domo_token() -> str:
@@ -78,19 +79,24 @@ def _is_cache_fresh() -> bool:
 
 
 def get_domo_dataset_index(force_refresh: bool = False) -> List[Dict[str, str]]:
+    global _REFRESHING
     if not force_refresh and _CACHE.get("data") and _is_cache_fresh():
         return _CACHE["data"]
 
-    data = _build_index()
-    _CACHE["data"] = data
-    _CACHE["fetched_at"] = time.time()
-    return data
+    _REFRESHING = True
+    try:
+        data = _build_index()
+        _CACHE["data"] = data
+        _CACHE["fetched_at"] = time.time()
+        return data
+    finally:
+        _REFRESHING = False
 
 
 def search_domo_datasets(query: str, limit: int | None = None, offset: int = 0) -> Dict[str, Any]:
     query = (query or "").strip()
     if not query:
-        return {"results": [], "total": 0}
+        return {"results": [], "total": 0, "warming": is_warming()}
 
     max_limit = None if limit is None else max(1, int(limit))
     safe_offset = max(0, int(offset or 0))
@@ -100,8 +106,8 @@ def search_domo_datasets(query: str, limit: int | None = None, offset: int = 0) 
     results = [ds for ds in data if q in (ds.get("name") or "").lower()]
     total = len(results)
     if max_limit is None:
-        return {"results": results[safe_offset:], "total": total}
-    return {"results": results[safe_offset:safe_offset + max_limit], "total": total}
+        return {"results": results[safe_offset:], "total": total, "warming": is_warming()}
+    return {"results": results[safe_offset:safe_offset + max_limit], "total": total, "warming": is_warming()}
 
 
 def refresh_domo_dataset_index() -> List[Dict[str, str]]:
@@ -112,5 +118,23 @@ def get_domo_dataset_index_status() -> Dict[str, Any]:
     return {
         "fetched_at": _CACHE.get("fetched_at", 0.0),
         "ttl_seconds": DATASET_INDEX_TTL_SECONDS,
-        "count": len(_CACHE.get("data") or [])
+        "count": len(_CACHE.get("data") or []),
+        "refreshing": _REFRESHING
     }
+
+
+def is_warming() -> bool:
+    return _REFRESHING or not _CACHE.get("data")
+
+
+def warm_index_async() -> None:
+    global _REFRESHING
+    if _REFRESHING or (_CACHE.get("data") and _is_cache_fresh()):
+        return
+    import threading
+
+    def _warm():
+        get_domo_dataset_index(force_refresh=True)
+
+    _REFRESHING = True
+    threading.Thread(target=_warm, daemon=True).start()
