@@ -44,13 +44,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ==================== STARTUP ====================
-@app.on_event("startup")
-def warm_dataset_index_on_startup():
-    try:
-        warm_index_async()
-    except Exception as e:
-        print(f"⚠️ Dataset index warm on startup failed: {e}")
 
 # ==================== MODELS ====================
 
@@ -1373,6 +1366,29 @@ def refresh_domo_datasets_endpoint():
             status_code=500,
             detail={
                 "error": "Domo dataset index refresh failed",
+                "message": str(e)
+            }
+        )
+
+
+@app.post("/api/domo/datasets/warm")
+def warm_domo_datasets_endpoint():
+    """
+    Trigger async warming of the dataset index.
+    """
+    try:
+        warm_index_async()
+        status = get_domo_dataset_index_status()
+        return {
+            "status": "success",
+            "cache": status,
+            "warming": True
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Domo dataset index warm failed",
                 "message": str(e)
             }
         )
