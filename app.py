@@ -1360,12 +1360,13 @@ def refresh_domo_datasets_endpoint():
     Force refresh the Domo dataset index cache.
     """
     try:
-        data = refresh_domo_dataset_index()
+        warm_index_async()
         status = get_domo_dataset_index_status()
         return {
             "status": "success",
-            "count": len(data),
-            "cache": status
+            "count": status.get("count", 0),
+            "cache": status,
+            "warming": True
         }
     except Exception as e:
         raise HTTPException(
