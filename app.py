@@ -1317,8 +1317,7 @@ def domo_dataset_detail(payload: DomoDatasetDetailRequest):
 @app.get("/api/domo/datasets/search")
 def search_domo_datasets_endpoint(
     q: str = Query("", description="Search term"),
-    limit: Optional[int] = Query(50, ge=1),
-    offset: int = Query(0, ge=0)
+    limit: Optional[int] = Query(None, ge=1)
 ):
     """
     Search Domo datasets by name using cached backend index.
@@ -1326,7 +1325,7 @@ def search_domo_datasets_endpoint(
     """
     try:
         warm_index_async()
-        payload = search_domo_datasets(q, limit, offset)
+        payload = search_domo_datasets(q, limit)
         results = payload["results"]
         total = payload["total"]
         return {

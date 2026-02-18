@@ -93,21 +93,20 @@ def get_domo_dataset_index(force_refresh: bool = False) -> List[Dict[str, str]]:
         _REFRESHING = False
 
 
-def search_domo_datasets(query: str, limit: int | None = None, offset: int = 0) -> Dict[str, Any]:
+def search_domo_datasets(query: str, limit: int | None = None) -> Dict[str, Any]:
     query = (query or "").strip()
     if not query:
         return {"results": [], "total": 0, "warming": is_warming()}
 
     max_limit = None if limit is None else max(1, int(limit))
-    safe_offset = max(0, int(offset or 0))
     data = get_domo_dataset_index(force_refresh=False)
     q = query.lower()
 
     results = [ds for ds in data if q in (ds.get("name") or "").lower()]
     total = len(results)
     if max_limit is None:
-        return {"results": results[safe_offset:], "total": total, "warming": is_warming()}
-    return {"results": results[safe_offset:safe_offset + max_limit], "total": total, "warming": is_warming()}
+        return {"results": results, "total": total, "warming": is_warming()}
+    return {"results": results[:max_limit], "total": total, "warming": is_warming()}
 
 
 def refresh_domo_dataset_index() -> List[Dict[str, str]]:
