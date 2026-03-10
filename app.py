@@ -1516,7 +1516,7 @@ def transform_to_domo_configs(payload: TransformToDomoRequest):
                 try:
                     config = adapter.build_card_config(visual)
                     card_configs.append({
-                        "visual_id": visual.get("id"),
+                        # "visual_id": visual.get("id"),
                         "visual_type": visual.get("type"),
                         "title": visual.get("title", "Untitled Visual"),
                         "config": config,
